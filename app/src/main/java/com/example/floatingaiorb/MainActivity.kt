@@ -109,9 +109,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent?.getBooleanExtra("REQUEST_SCREEN", false) == true) {
+        if (intent.getBooleanExtra("REQUEST_SCREEN", false)) {
             window.decorView.post { requestCapture() }
         }
     }
@@ -233,7 +233,7 @@ class MainActivity : ComponentActivity() {
                             VoiceEngine.State.LISTENING -> voiceEngine?.stopListening()
                             VoiceEngine.State.SPEAKING -> voiceEngine?.stopSpeaking()
                             else -> {
-                                if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                     voiceEngine?.startListening()
                                 } else {
                                     microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
@@ -467,7 +467,7 @@ class MainActivity : ComponentActivity() {
     private fun now(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 }
 
-private object AppMemory {
+object AppMemory {
     var cameraBitmap by mutableStateOf<Bitmap?>(null)
     var voiceState by mutableStateOf(VoiceEngine.State.IDLE)
     var voiceText by mutableStateOf("")

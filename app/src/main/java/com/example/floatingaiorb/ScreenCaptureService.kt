@@ -261,13 +261,13 @@ class ScreenCaptureService : Service() {
         header.addView(close, LinearLayout.LayoutParams(dp(42), dp(42)))
         panel.addView(header)
 
-        val hint = TextView(this).apply {
+        val hintView = TextView(this).apply {
             text = "Tarik header untuk memindahkan panel • riwayat chat tersimpan"
             textSize = 10f
             setTextColor(0xFF778399.toInt())
             setPadding(0, dp(6), 0, dp(4))
         }
-        panel.addView(hint)
+        panel.addView(hintView)
 
         val quickScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
