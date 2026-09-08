@@ -239,10 +239,14 @@ class ScreenCaptureService : Service() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(10))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF141A29.toInt(), 0xFF090D17.toInt())
-            ).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), 0x667D52EA) }
+            val theme = getSharedPreferences("orb", Context.MODE_PRIVATE).getString("uiTheme", "nebula").orEmpty()
+            val colors = when (theme) {
+                "glass" -> intArrayOf(0xE61B2230.toInt(), 0xCC0D121B.toInt())
+                "mono" -> intArrayOf(0xFF171719.toInt(), 0xFF060607.toInt())
+                "white" -> intArrayOf(0xFFF5F5F7.toInt(), 0xFFE4E5E8.toInt())
+                else -> intArrayOf(0xFF141A29.toInt(), 0xFF090D17.toInt())
+            }
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), accentColor().let { it }) }
             elevation = dp(20).toFloat()
         }
 
@@ -657,8 +661,22 @@ class ScreenCaptureService : Service() {
         addHistoryAndBubble(messages, "user", prompt, attachScreen)
         val command = CommandEngine.parse(prompt)
         if (!attachScreen && command.type != CommandEngine.Type.UNKNOWN) {
+            if ((command.type == CommandEngine.Type.TIKTOK_COMMENT || command.type == CommandEngine.Type.WHATSAPP_REPLY) && !CommandEngine.accessibilityEnabled(this)) {
+                val reply = "Bisa, tapi AI Action Assist belum aktif. Nyalakan aksesibilitas Floating AI dulu ya."
+                addHistoryAndBubble(messages, "ai", reply)
+                if (speakReply) voiceEngine?.speak(reply)
+                voiceSessionActive = false
+                savePersistentChat()
+                return
+            }
             val ok = CommandEngine.execute(this, command)
-            val reply = if (ok) "Siap, ${command.appName ?: "aplikasinya"} udah kubuka." else "Aplikasinya belum ketemu atau nggak bisa dibuka dari sini."
+            val reply = when (command.type) {
+                CommandEngine.Type.OPEN_APP -> if (ok) "Siap, ${command.appName ?: "aplikasinya"} udah kubuka." else "Aplikasinya belum ketemu atau nggak bisa dibuka dari sini."
+                CommandEngine.Type.TIKTOK_SEARCH -> if (ok) "Siap, aku carikan ${command.payload} di TikTok." else "Pencarian TikTok belum bisa dijalankan dari sini."
+                CommandEngine.Type.TIKTOK_COMMENT -> if (ok) "Teks komentarnya sudah kusiapkan. Cek dulu sebelum kamu konfirmasi kirim." else "Komentarnya belum bisa disiapkan."
+                CommandEngine.Type.WHATSAPP_REPLY -> if (ok) "Pesannya sudah kumasukkan ke chat yang sedang terbuka. Cek dulu sebelum kirim." else "WhatsApp belum bisa diproses sekarang."
+                else -> "Siap."
+            }
             addHistoryAndBubble(messages, "ai", reply)
             if (speakReply) voiceEngine?.speak(reply)
             voiceSessionActive = false
@@ -739,9 +757,20 @@ class ScreenCaptureService : Service() {
         minWidth = 0
         includeFontPadding = false
         isAllCaps = false
-        setTextColor(Color.WHITE)
-        background = rounded(0xFF6137C1.toInt())
+        val theme = getSharedPreferences("orb", Context.MODE_PRIVATE).getString("uiTheme", "nebula").orEmpty()
+        setTextColor(if (theme == "white") Color.BLACK else Color.WHITE)
+        background = rounded(accentColor())
         stateListAnimator = null
+    }
+
+    private fun accentColor(): Int {
+        return when (getSharedPreferences("orb", Context.MODE_PRIVATE).getString("accent", "purple")) {
+            "cyan" -> 0xFF168EA6.toInt()
+            "pink" -> 0xFFC33C83.toInt()
+            "green" -> 0xFF16865B.toInt()
+            "mono" -> 0xFF3A3A3D.toInt()
+            else -> 0xFF6C3ED0.toInt()
+        }
     }
 
     private fun rounded(color: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(14).toFloat() }

@@ -2,29 +2,37 @@ package com.example.floatingaiorb
 
 import android.app.Activity
 import android.os.Bundle
-import android.content.Context
 import android.content.Intent
-import android.view.Gravity
-import android.widget.*
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.content.ContextCompat
 
 class ConfirmSendActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val comment = intent.getStringExtra("comment").orEmpty()
-        val box = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(42,42,42,42); background = GradientDrawable().apply{setColor(Color.rgb(20,25,40)); cornerRadius=32f} }
-        box.addView(TextView(this).apply { text="Konfirmasi komentar"; textSize=22f; setTextColor(Color.WHITE) })
-        box.addView(TextView(this).apply { text="AI sudah mengetik:\n\n$comment\n\nTekan Kirim untuk tindakan publik."; textSize=16f; setTextColor(0xFFD7DCEC.toInt()); setPadding(0,24,0,24) })
-        val row=LinearLayout(this).apply{gravity=Gravity.END}
-        val cancel=Button(this).apply{text="Batal"}; val send=Button(this).apply{text="Kirim"}
-        row.addView(cancel); row.addView(send); box.addView(row)
-        cancel.setOnClickListener { getSharedPreferences("orb", Context.MODE_PRIVATE).edit().remove("pending_tiktok_comment").apply(); finish() }
-        send.setOnClickListener {
-            // Service receives the explicit confirmation through a broadcast.
+        val prefs = getSharedPreferences("orb", MODE_PRIVATE)
+        val title = intent.getStringExtra("title") ?: "Konfirmasi tindakan"
+        val payload = intent.getStringExtra("comment").orEmpty()
+        val message = intent.getStringExtra("message") ?: "Periksa dulu sebelum tindakan dijalankan."
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(48, 42, 48, 42)
+            setBackgroundColor(Color.rgb(10, 12, 18))
+        }
+        root.addView(TextView(this).apply { text = title; textSize = 22f; setTextColor(Color.WHITE); setPadding(0,0,0,18) })
+        root.addView(TextView(this).apply { text = message; textSize = 15f; setTextColor(Color.LTGRAY); setPadding(0,0,0,18) })
+        root.addView(TextView(this).apply { text = payload; textSize = 17f; setTextColor(Color.WHITE); setPadding(16,16,16,16) })
+        val confirm = Button(this).apply { text = "Lanjutkan"; setOnClickListener {
             sendBroadcast(Intent("com.example.floatingaiorb.CONFIRM_SEND").setPackage(packageName))
             finish()
-        }
-        setContentView(FrameLayout(this).apply { setPadding(28,28,28,28); addView(box, FrameLayout.LayoutParams(-1,-2,Gravity.CENTER)) })
+        } }
+        val cancel = Button(this).apply { text = "Batal"; setOnClickListener { prefs.edit().remove("pending_action_type").remove("pending_action_payload").apply(); finish() } }
+        root.addView(confirm, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 })
+        root.addView(cancel, LinearLayout.LayoutParams(-1, -2))
+        setContentView(root)
     }
 }

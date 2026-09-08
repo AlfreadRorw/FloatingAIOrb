@@ -181,6 +181,8 @@ class MainActivity : ComponentActivity() {
     private fun AppRoot() {
         var showSettings by remember { mutableStateOf(false) }
         var activeTab by remember { mutableStateOf("Home") }
+        var uiTheme by remember { mutableStateOf(prefs.getString("uiTheme", "nebula").orEmpty()) }
+        var accent by remember { mutableStateOf(prefs.getString("accent", "purple").orEmpty()) }
         val voiceState by remember { derivedStateOf { AppMemory.voiceState } }
         var apiKey by remember { mutableStateOf(prefs.getString("key", "").orEmpty()) }
         var model by remember { mutableStateOf(prefs.getString("model", AIClient.DEFAULT_MODEL).orEmpty()) }
@@ -205,10 +207,28 @@ class MainActivity : ComponentActivity() {
         }
         LaunchedEffect(messages.size) { if (messages.isNotEmpty()) scope.launch { listState.animateScrollToItem(messages.lastIndex) } }
 
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF060914), Color(0xFF0D1020), Color(0xFF080A12))))) {
+        val bgTop = when (uiTheme) {
+            "glass" -> Color(0xCC111722)
+            "mono" -> Color(0xFF0A0A0B)
+            "white" -> Color(0xFFF2F3F5)
+            else -> Color(0xFF060914)
+        }
+        val bgMid = when (uiTheme) {
+            "glass" -> Color(0xCC1A2130)
+            "mono" -> Color(0xFF141416)
+            "white" -> Color(0xFFE6E7EA)
+            else -> Color(0xFF0D1020)
+        }
+        val bgBottom = when (uiTheme) {
+            "glass" -> Color(0xCC0D1119)
+            "mono" -> Color(0xFF080809)
+            "white" -> Color(0xFFF8F8F8)
+            else -> Color(0xFF080A12)
+        }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(bgTop, bgMid, bgBottom)))) {
             AnimatedBackground()
             Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Header(voiceState = voiceState)
+                Header(voiceState = voiceState, theme = uiTheme)
                 FeatureRow(
                     onOrb = { ensureOverlayAndShow() },
                     onScreen = { requestCapture() },
@@ -282,10 +302,15 @@ class MainActivity : ComponentActivity() {
                     voicePreset = voicePreset,
                     onKey = { apiKey = it }, onModel = { model = it }, onEndpoint = { endpoint = it },
                     onPreset = { voicePreset = it; voiceEngine?.setPreset(it) },
+                    theme = uiTheme,
+                    accent = accent,
+                    onTheme = { uiTheme = it },
+                    onAccent = { accent = it },
                     onSave = {
-                        prefs.edit().putString("key", apiKey.trim()).putString("model", model.trim()).putString("endpoint", endpoint.trim()).putString("voicePreset", voicePreset.name).apply()
+                        prefs.edit().putString("key", apiKey.trim()).putString("model", model.trim()).putString("endpoint", endpoint.trim()).putString("voicePreset", voicePreset.name).putString("uiTheme", uiTheme).putString("accent", accent).apply()
                         showSettings = false
-                        toast("Pengaturan disimpan")
+                        toast("Tampilan baru aktif. Panel juga akan ikut tema saat dibuka lagi.")
+                        runCatching { startOrbOnly() }
                     },
                     onClose = { showSettings = false }
                 )
@@ -302,11 +327,13 @@ class MainActivity : ComponentActivity() {
         if (text.isBlank()) return
         val command = CommandEngine.parse(text)
         if (command.type != CommandEngine.Type.UNKNOWN) {
-            val ok = if (command.type == CommandEngine.Type.TIKTOK_COMMENT && !CommandEngine.accessibilityEnabled(this)) false
-            else CommandEngine.execute(this, command)
+            val needsAccessibility = command.type == CommandEngine.Type.TIKTOK_COMMENT || command.type == CommandEngine.Type.TIKTOK_SEARCH || command.type == CommandEngine.Type.WHATSAPP_REPLY
+            val ok = if (needsAccessibility && !CommandEngine.accessibilityEnabled(this)) false else CommandEngine.execute(this, command)
             val status = when (command.type) {
                 CommandEngine.Type.OPEN_APP -> if (ok) "Membuka ${command.appName}." else "Aplikasi ${command.appName} tidak ditemukan."
-                CommandEngine.Type.TIKTOK_COMMENT -> if (ok) "TikTok dibuka. AI Action Assist akan membantu membuka komentar dan mengetik teks. Sebelum komentar dikirim, kamu tetap harus menekan konfirmasi Kirim." else "Aktifkan AI Action Assist di Pengaturan Aksesibilitas terlebih dahulu."
+                CommandEngine.Type.TIKTOK_SEARCH -> if (ok) "TikTok dibuka. Pencarian ${command.payload} sedang disiapkan." else "Aktifkan AI Action Assist agar Floating AI bisa membantu pencarian TikTok."
+                CommandEngine.Type.TIKTOK_COMMENT -> if (ok) "Komentar sudah disiapkan. Kamu tetap mengonfirmasi sebelum diposting." else "Aktifkan AI Action Assist agar Floating AI bisa membantu isi komentar."
+                CommandEngine.Type.WHATSAPP_REPLY -> if (ok) "Pesan sudah disiapkan di WhatsApp. Kamu tetap bisa cek sebelum mengirim." else "Aktifkan AI Action Assist agar Floating AI bisa membantu mengisi chat WhatsApp."
                 else -> ""
             }
             onResult(ChatItem("user", text, false, now()))
@@ -337,7 +364,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Header(voiceState: VoiceEngine.State) {
+    private fun Header(voiceState: VoiceEngine.State, theme: String = "nebula") {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OrbLogo(Modifier.size(52.dp))
             Spacer(Modifier.width(11.dp))
@@ -352,7 +379,7 @@ class MainActivity : ComponentActivity() {
                 Text(status, color = Color(0xFFA9B1C4), fontSize = 12.sp)
             }
             Surface(shape = RoundedCornerShape(20.dp), color = Color(0xFF171D2B)) {
-                Text("V6", color = Color(0xFFCAB6FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                Text("V7", color = if (theme == "white") Color(0xFF262626) else Color(0xFFCAB6FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }
     }
@@ -484,17 +511,38 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SetupCard(apiKey: String, model: String, endpoint: String, voicePreset: VoiceEngine.Preset, onKey: (String) -> Unit, onModel: (String) -> Unit, onEndpoint: (String) -> Unit, onPreset: (VoiceEngine.Preset) -> Unit, onSave: () -> Unit, onClose: () -> Unit) {
-        Surface(shape = RoundedCornerShape(24.dp), color = Color(0xFF101624), tonalElevation = 8.dp, shadowElevation = 18.dp, modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x554F3C86), RoundedCornerShape(24.dp))) {
+    private fun SetupCard(apiKey: String, model: String, endpoint: String, voicePreset: VoiceEngine.Preset, theme: String, accent: String, onTheme: (String) -> Unit, onAccent: (String) -> Unit, onKey: (String) -> Unit, onModel: (String) -> Unit, onEndpoint: (String) -> Unit, onPreset: (VoiceEngine.Preset) -> Unit, onSave: () -> Unit, onClose: () -> Unit) {
+        val panelColor = when (theme) {
+            "white" -> Color(0xFFF7F7F8)
+            "mono" -> Color(0xFF111113)
+            "glass" -> Color(0xD91B2130)
+            else -> Color(0xFF101624)
+        }
+        val fg = if (theme == "white") Color(0xFF1A1B1E) else Color.White
+        Surface(shape = RoundedCornerShape(24.dp), color = panelColor, tonalElevation = 8.dp, shadowElevation = 18.dp, modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x554F3C86), RoundedCornerShape(24.dp))) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("SETUP & VOICE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                    Text("TAMPILAN • VOICE • AI", color = fg, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.weight(1f))
                     IconButton(onClick = onClose) { Icon(Icons.Default.Close, null, tint = Color(0xFFC8CFDC)) }
                 }
                 OutlinedTextField(apiKey, onKey, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true)
                 OutlinedTextField(model, onModel, Modifier.fillMaxWidth(), label = { Text("Model") }, singleLine = true)
                 OutlinedTextField(endpoint, onEndpoint, Modifier.fillMaxWidth(), label = { Text("Endpoint") }, singleLine = true)
-                Text("Anime voice", color = Color(0xFFB8C1D2), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Tema aplikasi", color = if (theme == "white") Color(0xFF44464D) else Color(0xFFB8C1D2), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("nebula" to "Nebula", "glass" to "Glass", "mono" to "Hitam Putih", "white" to "White").forEach { (id, label) ->
+                        FilterChip(selected = theme == id, onClick = { onTheme(id) }, label = { Text(label, fontSize = 10.sp) }, modifier = Modifier.weight(1f))
+                    }
+                }
+                Text("Warna aksen", color = if (theme == "white") Color(0xFF44464D) else Color(0xFFB8C1D2), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("purple" to "Ungu", "cyan" to "Cyan", "pink" to "Pink", "green" to "Hijau", "mono" to "Monokrom").forEach { (id, label) ->
+                        FilterChip(selected = accent == id, onClick = { onAccent(id) }, label = { Text(label, fontSize = 9.sp) }, modifier = Modifier.weight(1f))
+                    }
+                }
+                Text("Mode Glass membuat panel terasa transparan; mode Monokrom fokus ke hitam-putih yang bersih.", color = if (theme == "white") Color(0xFF666A72) else Color(0xFF7D899E), fontSize = 10.sp)
+
+                Text("Anime voice", color = if (theme == "white") Color(0xFF44464D) else Color(0xFFB8C1D2), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     VoiceEngine.Preset.values().forEach { preset ->
                         FilterChip(selected = voicePreset == preset, onClick = { onPreset(preset) }, label = { Text(preset.label, fontSize = 10.sp) }, modifier = Modifier.weight(1f))
