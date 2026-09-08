@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
     private val prefs by lazy { getSharedPreferences("orb", Context.MODE_PRIVATE) }
     private var pendingPhotoUri: Uri? = null
     private var voiceEngine: VoiceEngine? = null
+    private var pendingVoiceAfterPermission = false
 
     private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
                 putExtra(ScreenCaptureService.EXTRA_DATA, result.data)
             }
             ContextCompat.startForegroundService(this, serviceIntent)
+            window.decorView.post { moveTaskToBack(true) }
         }
     }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -90,7 +92,16 @@ class MainActivity : ComponentActivity() {
         if (granted) launchFullCamera() else toast("Izin kamera ditolak")
     }
     private val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) voiceEngine?.startListening() else toast("Izin mikrofon ditolak")
+        if (granted) {
+            if (pendingVoiceAfterPermission) {
+                pendingVoiceAfterPermission = false
+                ContextCompat.startForegroundService(this, Intent(this, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_VOICE))
+                window.decorView.post { moveTaskToBack(true) }
+            } else voiceEngine?.startListening()
+        } else {
+            pendingVoiceAfterPermission = false
+            toast("Izin mic ditolak. Voice belum bisa jalan.")
+        }
     }
     private val takePicture = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && pendingPhotoUri != null) {
@@ -111,6 +122,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.getBooleanExtra("REQUEST_MIC", false)) {
+            pendingVoiceAfterPermission = true
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                pendingVoiceAfterPermission = false
+                ContextCompat.startForegroundService(this, Intent(this, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_VOICE))
+                window.decorView.post { moveTaskToBack(true) }
+            } else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
         if (intent.getBooleanExtra("REQUEST_SCREEN", false)) {
             window.decorView.post { requestCapture() }
         }
@@ -295,11 +314,11 @@ class MainActivity : ComponentActivity() {
         val key = prefs.getString("key", "").orEmpty()
         val model = prefs.getString("model", AIClient.DEFAULT_MODEL).orEmpty()
         val endpoint = prefs.getString("endpoint", AIClient.DEFAULT_ENDPOINT).orEmpty()
-        if (key.isBlank()) { onResult(ChatItem("ai", "API key belum diisi. Buka SETUP dan simpan key terlebih dahulu.", time = now())); return }
+        if (key.isBlank()) { onResult(ChatItem("ai", AIClient.offlineReply(text), time = now())); return }
         onResult(ChatItem("user", text, image != null, now()))
         onBusy(true)
         executor.execute {
-            val answer = runCatching { AIClient.chat(key, endpoint, model, text, image).text }.getOrElse { "Error: ${it.message ?: "permintaan gagal"}" }
+            val answer = runCatching { AIClient.chat(key, endpoint, model, text, image).text }.getOrElse { "${AIClient.offlineReply(text)}\n\nCatatan: koneksi AI sedang bermasalah." }
             runOnUiThread { onResult(ChatItem("ai", answer, time = now())); onBusy(false) }
         }
     }

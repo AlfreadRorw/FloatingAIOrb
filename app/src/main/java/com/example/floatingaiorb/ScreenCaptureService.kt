@@ -15,6 +15,8 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.*
+import android.text.Editable
+import android.text.TextWatcher
 import android.provider.Settings
 import android.view.*
 import android.widget.*
@@ -61,6 +63,8 @@ class ScreenCaptureService : Service() {
     private val history = mutableListOf<HistoryItem>()
     private var draftText = ""
     private var voiceEngine: VoiceEngine? = null
+    @Volatile private var snapshotInProgress = false
+    private var pendingScreenPrompt: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -114,7 +118,10 @@ class ScreenCaptureService : Service() {
             startForeground(NOTIFICATION_ID, notification())
         }
         showOrb()
-        if (projection != null) return
+        if (projection != null) {
+            pendingScreenPrompt?.let { mainHandler.postDelayed({ captureCleanSnapshot() }, 450L) }
+            return
+        }
         val metrics = resources.displayMetrics
         val width = metrics.widthPixels.coerceAtMost(1440)
         val height = metrics.heightPixels.coerceAtMost(2560)
@@ -141,6 +148,7 @@ class ScreenCaptureService : Service() {
         isRunning = true
         setVoiceStatus("")
         savePersistentChat()
+        pendingScreenPrompt?.let { mainHandler.postDelayed({ captureCleanSnapshot() }, 650L) }
     }
 
     private fun captureFrame(image: Image) {
@@ -274,13 +282,14 @@ class ScreenCaptureService : Service() {
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val clear = actionButton("Bersihkan")
+        val clear = actionButton("Chat baru")
         val copy = actionButton("Salin")
+        val share = actionButton("Bagikan")
         val tiktok = actionButton("TikTok")
-        val screenStatus = actionButton(if (isRunning) "Screen ON" else "Screen")
+        val screenStatus = actionButton(if (isRunning) "Screen ✓" else "Screen")
         val summarize = actionButton("Ringkas")
-        listOf(clear, copy, tiktok, screenStatus, summarize).forEachIndexed { index, button ->
-            quickRow.addView(button, LinearLayout.LayoutParams(dp(86), dp(38)).apply { if (index > 0) leftMargin = dp(6) })
+        listOf(clear, copy, share, tiktok, screenStatus, summarize).forEachIndexed { index, button ->
+            quickRow.addView(button, LinearLayout.LayoutParams(dp(78), dp(38)).apply { if (index > 0) leftMargin = dp(6) })
         }
         quickScroll.addView(quickRow, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         panel.addView(quickScroll)
@@ -323,26 +332,29 @@ class ScreenCaptureService : Service() {
 
         fun doSend(attachScreen: Boolean) {
             val q = input.text?.toString()?.trim().orEmpty()
-            val finalQ = if (q.isBlank() && attachScreen) "Apa yang terlihat di layar ini? Jelaskan hal penting secara singkat." else q
+            val finalQ = if (q.isBlank() && attachScreen) "Apa yang terlihat di layar ini? Jelaskan yang penting secara singkat." else q
             if (finalQ.isBlank()) return
             addHistoryAndBubble(messages, "user", finalQ, attachScreen)
             input.setText("")
             draftText = ""
-            val imageForAi = synchronized(this) { if (attachScreen) lastFrame?.copy(Bitmap.Config.ARGB_8888, false) else null }
             if (attachScreen) {
-                if (imageForAi == null) {
-                    addHistoryAndBubble(messages, "ai", "Screen Vision belum aktif. Tekan Screen di aplikasi utama sekali untuk memberi izin, lalu coba lagi.")
-                    savePersistentChat()
-                    return
-                }
-                val preview = imageForAi.copy(Bitmap.Config.ARGB_8888, false)
-                addScreenPreview(messages, preview)
+                pendingScreenPrompt = finalQ
+                requestCleanSnapshot(messages, scroll)
+                savePersistentChat()
+                return
             }
-            callAi(messages, scroll, finalQ, imageForAi)
+            callAi(messages, scroll, finalQ, null)
             savePersistentChat()
         }
 
-        input.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) { draftText = input.text?.toString().orEmpty(); savePersistentChat() } }
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
+                draftText = text?.toString().orEmpty()
+            }
+            override fun afterTextChanged(s: Editable?) { savePersistentChat() }
+        })
+        input.setOnFocusChangeListener { _, _ -> draftText = input.text?.toString().orEmpty(); savePersistentChat() }
         send.setOnClickListener { doSend(false) }
         screen.setOnClickListener { doSend(true) }
         clear.setOnClickListener {
@@ -362,6 +374,18 @@ class ScreenCaptureService : Service() {
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Floating AI", latest))
                 Toast.makeText(this, "Jawaban terakhir disalin.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        share.setOnClickListener {
+            val latest = history.lastOrNull { it.who == "ai" }?.text
+            if (latest.isNullOrBlank()) {
+                Toast.makeText(this, "Belum ada jawaban buat dibagikan.", Toast.LENGTH_SHORT).show()
+            } else {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, latest)
+                }
+                runCatching { startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban")) }
             }
         }
         tiktok.setOnClickListener { openTikTok() }
@@ -425,6 +449,68 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    private fun requestCleanSnapshot(messages: LinearLayout, scroll: ScrollView) {
+        if (snapshotInProgress) return
+        if (projection == null) {
+            requestCaptureFromActivity()
+            return
+        }
+        snapshotInProgress = true
+        val prompt = pendingScreenPrompt.orEmpty()
+        val hadPanel = chatPanel != null
+        val hadOrb = orbContainer != null
+        if (hadPanel) hideChatPanel() else savePersistentChat()
+        if (hadOrb) {
+            orbContainer?.let { runCatching { windowManager?.removeView(it) } }
+            orbContainer = null
+        }
+        mainHandler.postDelayed({
+            val frame = synchronized(this) { lastFrame?.copy(Bitmap.Config.ARGB_8888, false) }
+            showOrb()
+            if (hadPanel) showChatPanel()
+            snapshotInProgress = false
+            pendingScreenPrompt = null
+            if (frame == null) {
+                addHistoryAndBubble(messages, "ai", "Layar belum kebaca. Coba tekan Lihat layar lagi ya.")
+                savePersistentChat()
+                return@postDelayed
+            }
+            addScreenPreview(messages, frame.copy(Bitmap.Config.ARGB_8888, false))
+            callAi(messages, scroll, prompt, frame)
+            savePersistentChat()
+        }, 420L)
+    }
+
+    private fun captureCleanSnapshot() {
+        if (!snapshotInProgress || pendingScreenPrompt == null || chatPanel == null && orbContainer == null) return
+        val prompt = pendingScreenPrompt.orEmpty()
+        val hadPanel = chatPanel != null
+        val hadOrb = orbContainer != null
+        if (hadPanel) hideChatPanel() else savePersistentChat()
+        if (hadOrb) {
+            orbContainer?.let { runCatching { windowManager?.removeView(it) } }
+            orbContainer = null
+        }
+        mainHandler.postDelayed({
+            // A fresh frame is captured while every Floating AI window is hidden.
+            // The overlay is restored immediately afterwards.
+            val frame = synchronized(this) { lastFrame?.copy(Bitmap.Config.ARGB_8888, false) }
+            showOrb()
+            if (hadPanel) showChatPanel()
+            snapshotInProgress = false
+            pendingScreenPrompt = null
+            val targetMessages = chatMessages
+            val targetScroll = chatScroll
+            if (frame != null && targetMessages != null && targetScroll != null) {
+                addScreenPreview(targetMessages, frame.copy(Bitmap.Config.ARGB_8888, false))
+                callAi(targetMessages, targetScroll, prompt, frame)
+                savePersistentChat()
+            } else {
+                frame?.recycle()
+            }
+        }, 420L)
+    }
+
     private fun addScreenPreview(c: LinearLayout, bitmap: Bitmap) {
         val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.START; setPadding(dp(2), dp(3), dp(2), dp(3)) }
         val label = TextView(this).apply { text = "Kamu • snapshot layar"; textSize = 10f; setTextColor(0xFFBFA8FF.toInt()); setPadding(dp(6), dp(2), dp(6), dp(4)) }
@@ -448,7 +534,8 @@ class ScreenCaptureService : Service() {
         val endpoint = prefs.getString("endpoint", AIClient.DEFAULT_ENDPOINT).orEmpty()
         if (key.isBlank()) {
             removeTyping(messages)
-            addHistoryAndBubble(messages, "ai", "API key belum diisi. Buka SETUP di aplikasi.")
+            addHistoryAndBubble(messages, "ai", AIClient.offlineReply(prompt))
+            image?.recycle()
             savePersistentChat()
             return
         }
@@ -505,14 +592,22 @@ class ScreenCaptureService : Service() {
         val engine = voiceEngine ?: return
         val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         if (!granted) {
-            Toast.makeText(this, "Izin mikrofon belum diberikan. Buka Floating AI sekali untuk mengizinkannya.", Toast.LENGTH_LONG).show()
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra("REQUEST_MIC", true)
+            }
+            runCatching { startActivity(intent) }.onFailure { Toast.makeText(this, "Buka Floating AI sekali untuk mengizinkan mic.", Toast.LENGTH_LONG).show() }
             return
         }
         if (AppMemory.voiceState == VoiceEngine.State.LISTENING) {
             engine.stopListening()
             setVoiceStatus("")
         } else {
-            if (Build.VERSION.SDK_INT >= 29) runCatching { startForeground(NOTIFICATION_ID, notification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) }
+            if (Build.VERSION.SDK_INT >= 29) {
+                val type = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    if (isRunning) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0
+                runCatching { startForeground(NOTIFICATION_ID, notification(), type) }
+            }
             else runCatching { startForeground(NOTIFICATION_ID, notification()) }
             engine.startListening("id-ID")
         }
@@ -535,14 +630,16 @@ class ScreenCaptureService : Service() {
     }
 
     private fun openTikTok() {
-        val packageName = "com.zhiliaoapp.musically"
-        val launch = packageManager.getLaunchIntentForPackage(packageName)
+        val pkg = CommandEngine.resolveInstalledPackage(this, listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"))
+        val launch = pkg?.let { packageManager.getLaunchIntentForPackage(it) }
         if (launch == null) {
-            Toast.makeText(this, "TikTok belum terpasang.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "TikTok belum ketemu di HP ini. Coba buka sekali dari ikon TikTok dulu.", Toast.LENGTH_LONG).show()
             return
         }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { startActivity(launch) }
+        runCatching { startActivity(launch) }.onFailure {
+            Toast.makeText(this, "TikTok ketemu, tapi gagal dibuka. Coba buka manual sekali.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun loadPersistentChat() {
@@ -574,6 +671,9 @@ class ScreenCaptureService : Service() {
     private fun actionButton(text: String) = Button(this).apply {
         this.text = text
         textSize = 11f
+        minHeight = 0
+        minWidth = 0
+        includeFontPadding = false
         isAllCaps = false
         setTextColor(Color.WHITE)
         background = rounded(0xFF6137C1.toInt())

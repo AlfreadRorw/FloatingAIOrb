@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">Floating AI Orb</string>
-    <string name="accessibility_description">Membantu navigasi dan mengisi teks berdasarkan perintah pengguna. Tindakan publik seperti mengirim komentar selalu memerlukan konfirmasi.</string>
+    <string name="accessibility_description">Membantu navigasi dan mengisi teks berdasarkan perintah pengguna. Floating AI hanya bertindak setelah ada permintaan pengguna. Tindakan publik seperti mengirim komentar selalu memerlukan konfirmasi.</string>
 </resources>

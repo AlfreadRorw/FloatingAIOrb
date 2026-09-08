@@ -73,11 +73,14 @@ object AIClient {
     }
 
     private val SYSTEM_PROMPT = """
-        Kamu adalah Floating AI Orb, asisten Android yang ringkas, natural, hangat, dan pintar.
-        Jawab memakai bahasa pengguna. Jangan pernah menampilkan proses berpikir internal, tag <think>, reasoning, atau catatan internal.
-        Jangan menulis markdown mentah yang tidak perlu. Gunakan paragraf pendek dan bullet sederhana hanya bila membantu.
-        Jika menerima foto atau screenshot, jelaskan hanya hal yang benar-benar terlihat. Jangan mengarang detail yang tidak tampak.
-        Untuk percakapan biasa, utamakan jawaban langsung dan tidak bertele-tele.
+        Kamu adalah Floating AI Orb, asisten Android yang santai, natural, pintar, dan enak diajak ngobrol.
+        Jawab memakai bahasa pengguna, utamakan bahasa Indonesia yang gaul tapi tetap jelas dan sopan.
+        Jangan pernah menampilkan proses berpikir internal, tag <think>, reasoning, atau catatan internal.
+        Jangan gunakan tanda bintang, markdown heading, atau format rumit. Jangan memulai baris dengan simbol bullet.
+        Pakai kalimat pendek dan paragraf yang enak dibaca di layar HP. Hindari gaya robotik dan jawaban kaku.
+        Kalau pengguna minta bantuan perangkat, jelaskan langkah yang benar dan jujur. Jangan mengaku sudah melakukan sesuatu kalau memang belum dilakukan.
+        Kalau menerima foto atau screenshot, jelaskan hanya hal yang benar-benar terlihat. Jangan mengarang detail yang tidak tampak.
+        Untuk percakapan biasa, jawab langsung, natural, dan tidak bertele-tele.
     """.trimIndent()
 
     fun cleanReply(raw: String): String {
@@ -88,8 +91,20 @@ object AIClient {
         text = text.replace("</think>", "", ignoreCase = true)
         text = text.replace(Regex("(?m)^\\s*#{1,6}\\s*"), "")
         text = text.replace("**", "").replace("__", "").replace("```", "")
+        text = text.replace(Regex("(?m)^\\s*[-*•]\\s+"), "")
         text = text.replace(Regex("\\n{3,}"), "\\n\\n")
         return text.trim().ifBlank { "Aku belum mendapat jawaban. Coba ulangi ya." }
+    }
+
+    fun offlineReply(prompt: String): String {
+        val p = prompt.lowercase()
+        return when {
+            p.contains("halo") || p.contains("hai") -> "Halo 😎 Aku tetap bisa bantu walau lagi offline. Fitur lokal seperti buka aplikasi, voice, screenshot, dan riwayat chat masih jalan."
+            p.contains("jam") -> "Aku lagi offline, jadi aku nggak bisa ambil waktu dari internet. Cek jam di status bar HP kamu ya."
+            p.contains("buka tiktok") -> "Siap. Perintah buka TikTok diproses lokal tanpa API AI."
+            p.contains("ringkas") -> "Mode offline aktif. Aku belum punya model vision lokal di versi ini, jadi ringkasan layar butuh koneksi AI."
+            else -> "Aku lagi mode offline. Chat AI bebas butuh koneksi internet, tapi perintah perangkat dan fitur lokal tetap bisa dipakai."
+        }
     }
 
     fun cleanForSpeech(raw: String): String = cleanReply(raw)

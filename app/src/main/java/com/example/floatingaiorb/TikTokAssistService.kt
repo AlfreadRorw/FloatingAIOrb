@@ -42,7 +42,7 @@ class TikTokAssistService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString().orEmpty()
-        if (pkg != "com.zhiliaoapp.musically") return
+        if (!CommandEngine.isTikTokPackage(this, pkg)) return
         pendingComment = getSharedPreferences("orb", Context.MODE_PRIVATE).getString("pending_tiktok_comment", "").orEmpty()
         if (pendingComment.isBlank() || waitingForSend) return
         handler.removeCallbacksAndMessages(null)
