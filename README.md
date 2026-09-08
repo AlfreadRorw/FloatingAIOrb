@@ -1,38 +1,23 @@
-# Floating AI Orb — Android Kotlin
+# Floating AI Orb 2.0
 
-Prototype Android app with:
+Versi ini memperbaiki crash foreground-service MediaProjection dan membuat orb dapat muncul tanpa harus menyalakan screen capture terlebih dahulu.
 
-- Floating AI orb over other apps/games
-- Android MediaProjection screen capture
-- Foreground service for capture
-- AI panel opened without leaving the current app
-- Android 8+ support
+## Fitur
+- Floating orb dengan glow/pulse animation dan drag.
+- Overlay chat AI yang bisa menerima input teks dan respons dari Groq/OpenAI-compatible endpoint.
+- Screen capture Android dengan izin sistem, lalu tombol `Lihat layar` untuk mengirim frame terakhir ke AI vision.
+- Kamera dari aplikasi melalui Android Camera intent; foto dapat dilampirkan ke pertanyaan AI.
+- API key, endpoint, dan model dapat diubah dari aplikasi, bukan ditanam permanen di source.
+- Ikon/logo Floating AI Orb.
+- GitHub Actions memakai Java 17 + Gradle 8.9.
 
-## Requirements
+## Konfigurasi AI
+Default endpoint: `https://api.groq.com/openai/v1/chat/completions`
+Default model: `qwen/qwen3.6-27b`
 
-- Android Studio with Android SDK 35
-- JDK 17
-- A real Android phone is recommended for testing
+Masukkan API key sendiri pada menu `SETUP`. Jangan commit API key ke GitHub.
 
-## Run
+## Build
+Workflow: `.github/workflows/android.yml`.
 
-1. Open this folder in Android Studio.
-2. Let Gradle sync.
-3. Build and run on an Android device.
-4. Open the app.
-5. Grant "Display over other apps".
-6. Tap "Mulai Screen Capture" and accept Android's screen-capture confirmation.
-7. Return to a game/app. The floating orb should remain visible.
-8. Tap the orb to open the AI panel.
-
-## Important
-
-This is the foundation, not a production AI service.
-
-The next layer is:
-
-Screen frame -> image preprocessing -> AI Vision API/local model -> structured game analysis -> response -> overlay.
-
-Do not hard-code API keys into the APK. Use a secure backend or an appropriate runtime secret mechanism.
-
-Some games/apps can block screenshots or overlays. Android system UI, DRM-protected content, and certain secure windows may not be capturable.
+Build lokal: `gradle --no-daemon clean assembleDebug` dengan JDK 17 dan Gradle 8.9.
