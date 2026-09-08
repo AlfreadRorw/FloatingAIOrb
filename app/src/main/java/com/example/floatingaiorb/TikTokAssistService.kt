@@ -1,10 +1,7 @@
 package com.example.floatingaiorb
 
 import android.accessibilityservice.AccessibilityService
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.content.*
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -13,136 +10,125 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.Locale
 
-/**
- * On-device action helper. It navigates visible accessibility controls only after the user
- * explicitly asks for an action. Public sends are staged and confirmed before the final tap.
- */
+/** Accessibility assistant for user-requested TikTok actions. Public sending requires confirmation. */
 class TikTokAssistService : AccessibilityService() {
     companion object {
-        const val ACTION_ASSIST = "com.example.floatingaiorb.ASSIST_TIKTOK_COMMENT"
-        private const val ACTION_CONFIRM = "com.example.floatingaiorb.CONFIRM_SEND"
+        const val ACTION_ASSIST = "com.example.floatingaiorb.ASSIST_TIKTOK_ACTION"
+        const val ACTION_CONFIRM = "com.example.floatingaiorb.CONFIRM_SEND"
         fun requestAssist(context: Context) = context.sendBroadcast(Intent(ACTION_ASSIST).setPackage(context.packageName))
     }
-
     private val handler = Handler(Looper.getMainLooper())
-    private var pendingType = ""
-    private var pendingPayload = ""
-    private var waitingForSend = false
-    private var lastAttempt = 0L
-    private val prefs by lazy { getSharedPreferences("orb", Context.MODE_PRIVATE) }
-
+    private var receiverRegistered = false
+    private var waitingForConfirm = false
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_CONFIRM) confirmSend()
-        }
+        override fun onReceive(context: Context?, intent: Intent?) { if (intent?.action == ACTION_CONFIRM) confirmSend() }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        reloadPending()
-        val filter = IntentFilter(ACTION_CONFIRM)
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED) else registerReceiver(receiver, filter)
+        runCatching {
+            val filter = IntentFilter(ACTION_CONFIRM)
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED) else registerReceiver(receiver, filter)
+            receiverRegistered = true
+        }
+        handler.postDelayed({ assist() }, 350)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        reloadPending()
-        if (pendingType.isBlank() || waitingForSend) return
-        val now = System.currentTimeMillis()
-        if (now - lastAttempt < 450) return
-        lastAttempt = now
-        handler.postDelayed({ assistVisibleScreen() }, 350)
+        val pkg = event?.packageName?.toString().orEmpty()
+        if (!CommandEngine.isTikTokPackage(this, pkg)) return
+        if (!hasPendingAction() || waitingForConfirm) return
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed({ assist() }, 450)
     }
 
-    override fun onInterrupt() = Unit
-    override fun onDestroy() { runCatching { unregisterReceiver(receiver) }; super.onDestroy() }
+    override fun onInterrupt() {}
+    override fun onDestroy() { if (receiverRegistered) runCatching { unregisterReceiver(receiver) }; super.onDestroy() }
 
-    private fun reloadPending() {
-        pendingType = prefs.getString("pending_action_type", "").orEmpty()
-        pendingPayload = prefs.getString("pending_action_payload", "").orEmpty()
-    }
+    private fun hasPendingAction(): Boolean = getSharedPreferences("orb", MODE_PRIVATE).getString("tiktok_action", "").orEmpty().isNotBlank()
 
-    private fun assistVisibleScreen() {
+    private fun assist() {
+        val prefs = getSharedPreferences("orb", MODE_PRIVATE)
+        val action = prefs.getString("tiktok_action", "").orEmpty()
+        if (action.isBlank()) return
         val root = rootInActiveWindow ?: return
-        val pkg = root.packageName?.toString().orEmpty()
-        when {
-            pendingType.startsWith("tiktok") && !CommandEngine.isTikTokPackage(this, pkg) -> return
-            pendingType.startsWith("whatsapp") && !CommandEngine.isWhatsAppPackage(this, pkg) -> return
-        }
-        when (pendingType) {
-            "tiktok_search" -> doTikTokSearch(root)
-            "tiktok_comment" -> doComment(root)
-            "whatsapp_reply" -> doWhatsAppReply(root)
+        when (action) {
+            "search" -> doSearch(root, prefs.getString("pending_tiktok_query", "").orEmpty())
+            "comment" -> doComment(root, prefs.getString("pending_tiktok_comment", "").orEmpty())
+            "reply" -> doReply(root, prefs.getString("pending_tiktok_target", "").orEmpty(), prefs.getString("pending_tiktok_reply", "").orEmpty())
         }
     }
 
-    private fun doTikTokSearch(root: AccessibilityNodeInfo) {
-        val searchButton = findAny(root, listOf("search", "cari"))
-        if (searchButton != null && findEditable(root) == null) {
-            clickUp(searchButton)
-            handler.postDelayed({ assistVisibleScreen() }, 700)
+    private fun doSearch(root: AccessibilityNodeInfo, query: String) {
+        if (query.isBlank()) return clearAction()
+        val input = findEditable(root)
+        if (input != null) {
+            setText(input, query)
+            input.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER)
+            input.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            handler.postDelayed({ clearAction() }, 1200)
             return
         }
-        val input = findEditable(root) ?: findAny(root, listOf("search", "cari", "telusuri")) ?: return
-        setText(input, pendingPayload)
-        waitingForSend = true
-        val searchKey = findAny(root, listOf("search", "cari"))
-        if (searchKey != null) clickUp(searchKey)
-        else showActionConfirmation("Pencarian TikTok", pendingPayload, "Tindakan ini akan menjalankan pencarian menggunakan teks yang kamu berikan.")
+        val searchButton = findAny(root, listOf("search", "cari", "search tab"))
+        if (searchButton != null) { clickUp(searchButton); handler.postDelayed({ assist() }, 850) }
     }
 
-    private fun doComment(root: AccessibilityNodeInfo) {
-        val commentButton = findAny(root, listOf("comment", "komentar", "comments"))
-        if (commentButton != null && findEditable(root) == null) {
-            clickUp(commentButton)
-            handler.postDelayed({ assistVisibleScreen() }, 700)
+    private fun doComment(root: AccessibilityNodeInfo, comment: String) {
+        if (comment.isBlank()) return clearAction()
+        val input = findEditable(root)
+        if (input != null) {
+            setText(input, comment)
+            waitingForConfirm = true
+            showConfirm(comment)
             return
         }
-        val input = findEditable(root) ?: findAny(root, listOf("add comment", "tambahkan komentar", "comment")) ?: return
-        if (setText(input, pendingPayload)) {
-            waitingForSend = true
-            showActionConfirmation("Siap kirim komentar", pendingPayload, "Teks sudah dimasukkan. Pengiriman publik tetap menunggu konfirmasi kamu.")
+        val button = findAny(root, listOf("comment", "komentar", "comments"))
+        if (button != null) { clickUp(button); handler.postDelayed({ assist() }, 750) }
+    }
+
+    private fun doReply(root: AccessibilityNodeInfo, target: String, reply: String) {
+        if (reply.isBlank()) return clearAction()
+        val input = findEditable(root)
+        if (input != null) {
+            setText(input, reply)
+            waitingForConfirm = true
+            showConfirm("Balas $target: $reply")
+            return
+        }
+        // Best effort navigation: Inbox > target chat > composer.
+        val inbox = findAny(root, listOf("inbox", "kotak masuk", "pesan", "messages"))
+        if (inbox != null) { clickUp(inbox); handler.postDelayed({ assist() }, 900); return }
+        if (target.isNotBlank()) {
+            val person = findAny(root, listOf(target))
+            if (person != null) { clickUp(person); handler.postDelayed({ assist() }, 850); return }
         }
     }
 
-    private fun doWhatsAppReply(root: AccessibilityNodeInfo) {
-        val input = findEditable(root) ?: findAny(root, listOf("type a message", "ketik pesan", "message")) ?: return
-        if (setText(input, pendingPayload)) {
-            waitingForSend = true
-            showActionConfirmation("Siap kirim pesan WhatsApp", pendingPayload, "Pesan sudah masuk ke kolom chat. Pengiriman tetap menunggu konfirmasi kamu.")
-        }
-    }
-
-    private fun setText(node: AccessibilityNodeInfo, text: String): Boolean {
+    private fun setText(node: AccessibilityNodeInfo, text: String) {
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
     }
 
-    private fun showActionConfirmation(title: String, payload: String, message: String) {
-        val intent = Intent(this, ConfirmSendActivity::class.java).apply {
+    private fun showConfirm(text: String) {
+        startActivity(Intent(this, ConfirmSendActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            putExtra("title", title)
-            putExtra("comment", payload)
-            putExtra("message", message)
-        }
-        startActivity(intent)
+            putExtra("comment", text)
+        })
     }
 
-    fun confirmSend() {
+    private fun confirmSend() {
         val root = rootInActiveWindow ?: return
-        val send = findAny(root, listOf("send", "kirim", "post", "search", "cari"))
-        if (send != null) {
-            clickUp(send)
-            clearPending()
-        } else {
-            clearPending()
-        }
+        val send = findAny(root, listOf("send", "kirim", "post", "sent"))
+        if (send != null) clickUp(send)
+        clearAction()
+        waitingForConfirm = false
     }
 
-    private fun clearPending() {
-        prefs.edit().remove("pending_action_type").remove("pending_action_payload").remove("pending_tiktok_comment").apply()
-        pendingType = ""
-        pendingPayload = ""
-        waitingForSend = false
+    private fun clearAction() {
+        getSharedPreferences("orb", MODE_PRIVATE).edit()
+            .remove("tiktok_action").remove("pending_tiktok_comment").remove("pending_tiktok_query")
+            .remove("pending_tiktok_target").remove("pending_tiktok_reply").apply()
+        waitingForConfirm = false
     }
 
     private fun findEditable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -156,12 +142,13 @@ class TikTokAssistService : AccessibilityService() {
     }
 
     private fun findAny(root: AccessibilityNodeInfo, words: List<String>): AccessibilityNodeInfo? {
+        val wanted = words.map { it.lowercase(Locale.getDefault()) }
         val q = ArrayDeque<AccessibilityNodeInfo>(); q.add(root)
         while (q.isNotEmpty()) {
             val n = q.removeFirst()
             val s = listOfNotNull(n.text?.toString(), n.contentDescription?.toString(), n.viewIdResourceName)
                 .joinToString(" ").lowercase(Locale.getDefault())
-            if (words.any { s.contains(it) } && n.isVisibleToUser) return n
+            if (n.isVisibleToUser && wanted.any { w -> s.contains(w) }) return n
             for (i in 0 until n.childCount) n.getChild(i)?.let(q::add)
         }
         return null
@@ -169,7 +156,7 @@ class TikTokAssistService : AccessibilityService() {
 
     private fun clickUp(node: AccessibilityNodeInfo): Boolean {
         var n: AccessibilityNodeInfo? = node
-        repeat(6) {
+        repeat(8) {
             if (n?.isClickable == true) return n!!.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             n = n?.parent
         }

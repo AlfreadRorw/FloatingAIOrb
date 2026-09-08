@@ -44,7 +44,7 @@ class ScreenCaptureService : Service() {
         private const val CHANNEL_ID = "floating_orb_service"
         private const val NOTIFICATION_ID = 1001
         private const val HISTORY_KEY = "overlay_history_v2"
-        private const val DRAFT_KEY = "overlay_draft_v6"
+        private const val DRAFT_KEY = "overlay_draft_v7"
         private const val MAX_HISTORY = 60
     }
 
@@ -70,11 +70,16 @@ class ScreenCaptureService : Service() {
     private var frameGeneration = 0
     private var voiceSessionActive = false
     private var autoSpeakReplies = true
+    private var uiTheme = "glass"
+    private var accent = "purple"
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
         loadPersistentChat()
+        val stylePrefs = getSharedPreferences("orb", Context.MODE_PRIVATE)
+        uiTheme = stylePrefs.getString("ui_theme", "glass").orEmpty()
+        accent = stylePrefs.getString("accent", "purple").orEmpty()
         voiceEngine = VoiceEngine(
             this,
             onState = { state ->
@@ -239,14 +244,7 @@ class ScreenCaptureService : Service() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(10))
-            val theme = getSharedPreferences("orb", Context.MODE_PRIVATE).getString("uiTheme", "nebula").orEmpty()
-            val colors = when (theme) {
-                "glass" -> intArrayOf(0xE61B2230.toInt(), 0xCC0D121B.toInt())
-                "mono" -> intArrayOf(0xFF171719.toInt(), 0xFF060607.toInt())
-                "white" -> intArrayOf(0xFFF5F5F7.toInt(), 0xFFE4E5E8.toInt())
-                else -> intArrayOf(0xFF141A29.toInt(), 0xFF090D17.toInt())
-            }
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply { cornerRadius = dp(23).toFloat(); setStroke(dp(1), accentColor().let { it }) }
+            background = panelBackground()
             elevation = dp(20).toFloat()
         }
 
@@ -659,24 +657,10 @@ class ScreenCaptureService : Service() {
         val messages = chatMessages ?: run { showChatPanel(); chatMessages } ?: return
         val scroll = chatScroll ?: return
         addHistoryAndBubble(messages, "user", prompt, attachScreen)
-        val command = CommandEngine.parse(prompt)
+        val command = CommandEngine.parse(this, prompt)
         if (!attachScreen && command.type != CommandEngine.Type.UNKNOWN) {
-            if ((command.type == CommandEngine.Type.TIKTOK_COMMENT || command.type == CommandEngine.Type.WHATSAPP_REPLY) && !CommandEngine.accessibilityEnabled(this)) {
-                val reply = "Bisa, tapi AI Action Assist belum aktif. Nyalakan aksesibilitas Floating AI dulu ya."
-                addHistoryAndBubble(messages, "ai", reply)
-                if (speakReply) voiceEngine?.speak(reply)
-                voiceSessionActive = false
-                savePersistentChat()
-                return
-            }
             val ok = CommandEngine.execute(this, command)
-            val reply = when (command.type) {
-                CommandEngine.Type.OPEN_APP -> if (ok) "Siap, ${command.appName ?: "aplikasinya"} udah kubuka." else "Aplikasinya belum ketemu atau nggak bisa dibuka dari sini."
-                CommandEngine.Type.TIKTOK_SEARCH -> if (ok) "Siap, aku carikan ${command.payload} di TikTok." else "Pencarian TikTok belum bisa dijalankan dari sini."
-                CommandEngine.Type.TIKTOK_COMMENT -> if (ok) "Teks komentarnya sudah kusiapkan. Cek dulu sebelum kamu konfirmasi kirim." else "Komentarnya belum bisa disiapkan."
-                CommandEngine.Type.WHATSAPP_REPLY -> if (ok) "Pesannya sudah kumasukkan ke chat yang sedang terbuka. Cek dulu sebelum kirim." else "WhatsApp belum bisa diproses sekarang."
-                else -> "Siap."
-            }
+            val reply = if (ok) "Siap, ${command.appName ?: "aplikasinya"} udah kubuka." else "Aplikasinya belum ketemu atau nggak bisa dibuka dari sini."
             addHistoryAndBubble(messages, "ai", reply)
             if (speakReply) voiceEngine?.speak(reply)
             voiceSessionActive = false
@@ -757,19 +741,29 @@ class ScreenCaptureService : Service() {
         minWidth = 0
         includeFontPadding = false
         isAllCaps = false
-        val theme = getSharedPreferences("orb", Context.MODE_PRIVATE).getString("uiTheme", "nebula").orEmpty()
-        setTextColor(if (theme == "white") Color.BLACK else Color.WHITE)
+        setTextColor(Color.WHITE)
         background = rounded(accentColor())
         stateListAnimator = null
     }
 
-    private fun accentColor(): Int {
-        return when (getSharedPreferences("orb", Context.MODE_PRIVATE).getString("accent", "purple")) {
-            "cyan" -> 0xFF168EA6.toInt()
-            "pink" -> 0xFFC33C83.toInt()
-            "green" -> 0xFF16865B.toInt()
-            "mono" -> 0xFF3A3A3D.toInt()
-            else -> 0xFF6C3ED0.toInt()
+    private fun accentColor(): Int = when (accent.lowercase(Locale.getDefault())) {
+        "cyan" -> 0xFF18A9B8.toInt()
+        "pink" -> 0xFFE04E8A.toInt()
+        "green" -> 0xFF2FA66A.toInt()
+        "white" -> 0xFFE9EDF5.toInt()
+        else -> 0xFF6B42D8.toInt()
+    }
+
+    private fun panelBackground(): GradientDrawable {
+        val (a, b, stroke) = when (uiTheme.lowercase(Locale.getDefault())) {
+            "blackwhite" -> Triple(0xFF0A0A0B.toInt(), 0xFF1B1B1D.toInt(), 0x66FFFFFF.toInt())
+            "white" -> Triple(0xFFF7F8FA.toInt(), 0xFFE9ECF2.toInt(), 0x66333333.toInt())
+            "purple" -> Triple(0xFF1B1030.toInt(), 0xFF0E0A18.toInt(), 0x667E56EA.toInt())
+            else -> Triple(0xCC151A25.toInt(), 0xCC090D14.toInt(), 0x668B8B94.toInt())
+        }
+        return GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(a, b)).apply {
+            cornerRadius = dp(23).toFloat()
+            setStroke(dp(1), stroke)
         }
     }
 
