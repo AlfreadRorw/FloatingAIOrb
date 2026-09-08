@@ -1,35 +1,14 @@
-# Floating AI Orb 3.0
+# Floating AI Orb v4.0
 
-Upgrade besar untuk Android phone-first:
+Perbaikan utama:
+- Tombol Voice pada floating panel tidak lagi membuka MainActivity. Voice dijalankan dari service dan hasil transkripsi masuk kembali ke kolom input.
+- Riwayat chat floating panel disimpan di SharedPreferences sehingga tidak hilang saat panel ditutup dan dibuka lagi.
+- Draft teks yang belum dikirim juga dipertahankan.
+- Tombol Screen dapat meminta izin MediaProjection melalui MainActivity hanya saat Screen Vision belum aktif.
+- Snapshot layar ditampilkan sebagai preview di chat sebelum jawaban AI.
+- Tombol cepat: Bersihkan, Salin, TikTok, Screen, Ringkas.
+- Mic permission ditangani di MainActivity.
+- Foreground service mendeklarasikan tipe microphone + mediaProjection.
+- Android Actions menggunakan setup-java v5.
 
-- Responsive portrait layout untuk HP kecil maupun besar.
-- Floating Orb yang bisa digeser, ketuk untuk membuka panel, panel dapat ditutup/minimize.
-- Panel overlay dengan drag header, chat, screen vision, dan tombol Voice yang membuka voice mode.
-- Voice chat memakai Android SpeechRecognizer + Text-to-Speech.
-- Preset suara Kawaii, Cute, Cool, dan Cyber melalui pitch/speech-rate TTS Android.
-- Kamera full-resolution melalui FileProvider, bukan preview kecil.
-- Screen capture via MediaProjection foreground service.
-- Chat output dibersihkan dari <think>, reasoning, heading markdown, dan code fence.
-- Quick prompts, status voice, animasi glow, dan UI yang lebih padat untuk layar HP.
-- API key tetap di SharedPreferences perangkat, tidak ditanam di source.
-
-## Build
-
-GitHub Actions memakai Java 17 dan Gradle 8.9.
-
-Workflow: `.github/workflows/android.yml`
-
-## Setup
-
-Buka aplikasi → SETUP → masukkan API key, model, dan endpoint. Untuk vision, pilih model vision yang tersedia pada provider kamu.
-
-## Voice
-
-Berikan izin microphone saat diminta. Suara anime-style adalah preset pitch/rate TTS Android; pilihan suara aktual tetap mengikuti engine TTS yang terpasang di HP.
-
-## V4 AI Action Assist
-- Voice/text commands: "Buka TikTok", "Buka WhatsApp", etc.
-- TikTok assist command example: "Buka TikTok, buka komentar, tulis halo semuanya".
-- The Accessibility Service must be enabled manually in Android Settings.
-- The service may navigate and fill text, but the final public Send action always opens an explicit confirmation screen.
-- No mass-commenting or background spam loop is included.
+Catatan: Screen Vision tetap membutuhkan persetujuan sistem MediaProjection pada Android. Voice tetap membutuhkan izin RECORD_AUDIO. TikTok automation tetap membutuhkan Accessibility Service yang diaktifkan manual oleh pengguna.

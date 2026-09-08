@@ -89,6 +89,9 @@ class MainActivity : ComponentActivity() {
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) launchFullCamera() else toast("Izin kamera ditolak")
     }
+    private val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) voiceEngine?.startListening() else toast("Izin mikrofon ditolak")
+    }
     private val takePicture = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && pendingPhotoUri != null) {
             val bitmap = contentResolver.openInputStream(pendingPhotoUri!!)?.use { stream -> android.graphics.BitmapFactory.decodeStream(stream) }
@@ -101,12 +104,18 @@ class MainActivity : ComponentActivity() {
         projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         voiceEngine = VoiceEngine(this, onState = { state -> AppMemory.voiceState = state }, onText = { text -> AppMemory.voiceText = text })
         setContent { OrbTheme { AppRoot() } }
+        if (savedInstanceState == null && intent.getBooleanExtra("REQUEST_SCREEN", false)) {
+            window.decorView.post { requestCapture() }
+        }
     }
 
-    override fun onNewIntent(intent: Intent) {
+    override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        if (intent.getBooleanExtra("AUTO_VOICE", false)) voiceEngine?.startListening()
+        if (intent?.getBooleanExtra("REQUEST_SCREEN", false) == true) {
+            window.decorView.post { requestCapture() }
+        }
     }
+
 
     override fun onResume() {
         super.onResume()
@@ -223,7 +232,13 @@ class MainActivity : ComponentActivity() {
                         when (voiceState) {
                             VoiceEngine.State.LISTENING -> voiceEngine?.stopListening()
                             VoiceEngine.State.SPEAKING -> voiceEngine?.stopSpeaking()
-                            else -> voiceEngine?.startListening()
+                            else -> {
+                                if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    voiceEngine?.startListening()
+                                } else {
+                                    microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
                         }
                     },
                     onSpeak = {
