@@ -307,11 +307,18 @@ class MainActivity : ComponentActivity() {
     ) {
         if (text.isBlank()) return
         val command = CommandEngine.parse(this, text)
+        if (command.type == CommandEngine.Type.LIST_APPS) {
+            val apps = CommandEngine.listLaunchableApps(this, 40)
+            onResult(ChatItem("user", text, false, now()))
+            onResult(ChatItem("ai", if (apps.isEmpty()) "Aku belum bisa membaca daftar aplikasi launcher di HP ini." else "Aplikasi yang terdeteksi di HP kamu:\n" + apps.joinToString(" • "), false, now()))
+            return
+        }
         if (command.type != CommandEngine.Type.UNKNOWN) {
             val needsAssist = command.type == CommandEngine.Type.TIKTOK_COMMENT || command.type == CommandEngine.Type.TIKTOK_SEARCH || command.type == CommandEngine.Type.TIKTOK_REPLY
             val ok = if (needsAssist && !CommandEngine.accessibilityEnabled(this)) false else CommandEngine.execute(this, command)
             val status = when (command.type) {
-                CommandEngine.Type.OPEN_APP -> if (ok) "Membuka ${command.appName}." else "Aplikasi ${command.appName} tidak ditemukan."
+                CommandEngine.Type.OPEN_APP -> if (ok) "Membuka ${command.appName}." else "Aplikasi ${command.appName} tidak ditemukan. Coba bilang nama aplikasinya lebih spesifik atau pakai perintah daftar aplikasi."
+                CommandEngine.Type.LIST_APPS -> ""
                 CommandEngine.Type.TIKTOK_COMMENT -> if (ok) "TikTok dibuka. Aku bantu masuk ke komentar dan ngetik teksnya. Sebelum terkirim, kamu tinggal konfirmasi." else "Aktifkan AI Action Assist di Pengaturan Aksesibilitas dulu ya."
                 CommandEngine.Type.TIKTOK_SEARCH -> if (ok) "Siap, aku cari itu di TikTok sekarang." else "TikTok nggak ketemu atau Action Assist belum aktif."
                 CommandEngine.Type.TIKTOK_REPLY -> if (ok) "Siap, aku buka chat TikTok yang kamu maksud dan siapin balasannya. Tinggal konfirmasi kirim." else "TikTok nggak ketemu atau Action Assist belum aktif."

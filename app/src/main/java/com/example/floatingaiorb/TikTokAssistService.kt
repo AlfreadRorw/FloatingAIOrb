@@ -64,13 +64,23 @@ class TikTokAssistService : AccessibilityService() {
         val input = findEditable(root)
         if (input != null) {
             setText(input, query)
-            input.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER)
-            input.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            submitSearch(input, root)
             handler.postDelayed({ clearAction() }, 1200)
             return
         }
         val searchButton = findAny(root, listOf("search", "cari", "search tab"))
         if (searchButton != null) { clickUp(searchButton); handler.postDelayed({ assist() }, 850) }
+    }
+
+    private fun submitSearch(input: AccessibilityNodeInfo, root: AccessibilityNodeInfo): Boolean {
+        // ACTION_IME_ENTER is exposed through AccessibilityAction from API 30.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val action = AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER
+            if (input.performAction(action.id)) return true
+        }
+        // Fallback for older Android versions and apps that ignore the IME action.
+        val submit = findAny(root, listOf("search", "cari", "go", "submit", "done", "selesai"))
+        return submit?.let { clickUp(it) } ?: false
     }
 
     private fun doComment(root: AccessibilityNodeInfo, comment: String) {

@@ -15,7 +15,7 @@ object CommandEngine {
         val target: String? = null,
         val reply: String? = null
     )
-    enum class Type { OPEN_APP, TIKTOK_COMMENT, TIKTOK_SEARCH, TIKTOK_REPLY, UNKNOWN }
+    enum class Type { OPEN_APP, LIST_APPS, TIKTOK_COMMENT, TIKTOK_SEARCH, TIKTOK_REPLY, UNKNOWN }
 
     private val aliases = mapOf("yt" to "youtube", "wa" to "whatsapp", "ig" to "instagram", "tt" to "tiktok")
     private val knownApps = mapOf(
@@ -31,6 +31,17 @@ object CommandEngine {
         var t = text.lowercase(Locale.getDefault()).trim().replace("tik tok", "tiktok")
         t = t.replace(Regex("\\s+"), " ")
         aliases.forEach { (from, to) -> t = t.replace(Regex("\\b${Regex.escape(from)}\\b"), to) }
+
+        if (Regex("^(?:daftar|list|tampilkan)\\s+aplikasi(?:\\s+yang\\s+terpasang)?$", RegexOption.IGNORE_CASE).containsMatchIn(t)) {
+            return Command(Type.LIST_APPS)
+        }
+
+        val appSearch = Regex("^(?:cari|temukan)\\s+aplikasi\\s+(.+)$", RegexOption.IGNORE_CASE).find(text)
+        if (appSearch != null && context != null) {
+            val q = appSearch.groupValues[1].trim()
+            val found = findLaunchableAppByLabel(context, q)
+            if (found != null) return Command(Type.OPEN_APP, found.first, found.second)
+        }
 
         val search = Regex("(?:cari|search|carikan|coba cari)(?: di)? tiktok(?: tentang| untuk| dengan| kata)?\\s+(.+)", RegexOption.IGNORE_CASE).find(text)
         if (search != null) return Command(Type.TIKTOK_SEARCH, "TikTok", resolveKnownPackage("tiktok"), query = search.groupValues[1].trim())
@@ -66,6 +77,7 @@ object CommandEngine {
 
     fun execute(context: Context, command: Command): Boolean = when (command.type) {
         Type.OPEN_APP -> openPackage(context, command.packageName)
+        Type.LIST_APPS -> false
         Type.TIKTOK_COMMENT -> assistTikTok(context, command)
         Type.TIKTOK_SEARCH -> assistTikTok(context, command)
         Type.TIKTOK_REPLY -> assistTikTok(context, command)
@@ -119,6 +131,17 @@ object CommandEngine {
             label == q || label.contains(q) || q.contains(label) && label.length > 2
         } ?: return null
         return hit.loadLabel(pm).toString() to hit.activityInfo.packageName
+    }
+
+    fun listLaunchableApps(context: Context, limit: Int = 40): List<String> {
+        val pm = context.packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return pm.queryIntentActivities(intent, PackageManager.MATCH_ALL)
+            .map { it.loadLabel(pm).toString().trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .sortedBy { it.lowercase(Locale.getDefault()) }
+            .take(limit.coerceIn(1, 100))
     }
 
     private fun prettyName(s: String) = s.replaceFirstChar { it.titlecase(Locale.getDefault()) }

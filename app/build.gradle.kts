@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.floatingaiorb"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "7.0"
+        versionCode = 9
+        versionName = "9.0"
     }
 
     buildFeatures { compose = true }
