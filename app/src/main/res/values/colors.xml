@@ -1,1 +1,5 @@
-<resources><color name="ic_launcher_bg">#090D18</color></resources>
+<resources>
+    <color name="purple_700">#6D35D4</color>
+    <color name="purple_500">#8B5CF6</color>
+    <color name="purple_200">#DCCBFF</color>
+</resources>

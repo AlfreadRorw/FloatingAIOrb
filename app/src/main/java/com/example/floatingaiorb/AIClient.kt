@@ -17,27 +17,27 @@ object AIClient {
 
     data class Result(val text: String, val rawStatus: Int)
 
-    fun chat(
-        apiKey: String,
-        endpoint: String,
-        model: String,
-        userText: String,
-        image: Bitmap? = null
-    ): Result {
+    fun chat(apiKey: String, endpoint: String, model: String, userText: String, image: Bitmap? = null): Result {
         require(apiKey.isNotBlank()) { "API key belum diisi." }
-        val payload = JSONObject().apply {
-            put("model", model.ifBlank { DEFAULT_MODEL })
-            put("temperature", 0.7)
-            put("max_tokens", 800)
-            val content = JSONArray().apply {
-                put(JSONObject().put("type", "text").put("text", userText))
-                if (image != null) {
-                    put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", bitmapDataUrl(image))))
-                }
+        val selectedModel = model.ifBlank { DEFAULT_MODEL }
+        val content = JSONArray().apply {
+            put(JSONObject().put("type", "text").put("text", userText.trim()))
+            if (image != null) {
+                put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", bitmapDataUrl(image))))
             }
-            val messages = JSONArray()
-            messages.put(JSONObject().put("role", "system").put("content", "Kamu adalah Floating AI Orb, asisten Android yang ramah, ringkas, jelas, dan membantu. Jika menerima gambar, jelaskan apa yang terlihat tanpa mengarang detail yang tidak tampak."))
-            messages.put(JSONObject().put("role", "user").put("content", content))
+        }
+        val messages = JSONArray().apply {
+            put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
+            put(JSONObject().put("role", "user").put("content", content))
+        }
+        val payload = JSONObject().apply {
+            put("model", selectedModel)
+            put("temperature", 0.65)
+            put("max_tokens", if (image != null) 420 else 260)
+            if (selectedModel.startsWith("qwen/")) {
+                put("reasoning_effort", "none")
+                put("reasoning_format", "hidden")
+            }
             put("messages", messages)
         }
 
@@ -50,29 +50,54 @@ object AIClient {
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Accept", "application/json")
         }
-
         return try {
             connection.outputStream.use { it.write(payload.toString().toByteArray(StandardCharsets.UTF_8)) }
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val body = BufferedReader(InputStreamReader(stream, StandardCharsets.UTF_8)).use { it.readText() }
+            val body = stream?.let { BufferedReader(InputStreamReader(it, StandardCharsets.UTF_8)).use(BufferedReader::readText) }.orEmpty()
             if (status !in 200..299) {
                 val msg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
-                throw IllegalStateException(msg?.takeIf { it.isNotBlank() } ?: "HTTP $status: ${body.take(300)}")
+                throw IllegalStateException(
+                    when (status) {
+                        401 -> "API key ditolak. Cek key di SETUP."
+                        429 -> "Batas penggunaan AI tercapai. Tunggu sebentar lalu coba lagi."
+                        else -> msg?.takeIf { it.isNotBlank() } ?: "HTTP $status: ${body.take(240)}"
+                    }
+                )
             }
-            val json = JSONObject(body)
-            val text = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content")
-                ?: "AI tidak mengembalikan jawaban."
-            Result(text, status)
+            val raw = JSONObject(body).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty()
+            Result(cleanReply(raw), status)
         } finally {
             connection.disconnect()
         }
     }
 
-    fun bitmapDataUrl(bitmap: Bitmap): String {
+    private const val SYSTEM_PROMPT = """
+        Kamu adalah Floating AI Orb, asisten Android yang ringkas, natural, hangat, dan pintar.
+        Jawab memakai bahasa pengguna. Jangan pernah menampilkan proses berpikir internal, tag <think>, reasoning, atau catatan internal.
+        Jangan menulis markdown mentah yang tidak perlu. Gunakan paragraf pendek dan bullet sederhana hanya bila membantu.
+        Jika menerima foto atau screenshot, jelaskan hanya hal yang benar-benar terlihat. Jangan mengarang detail yang tidak tampak.
+        Untuk percakapan biasa, utamakan jawaban langsung dan tidak bertele-tele.
+    """.trimIndent()
+
+    fun cleanReply(raw: String): String {
+        var text = raw.trim()
+        text = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE).replace(text, "")
+        val hidden = text.indexOf("<think>", ignoreCase = true)
+        if (hidden >= 0) text = text.substring(0, hidden)
+        text = text.replace("</think>", "", ignoreCase = true)
+        text = text.replace(Regex("(?m)^\\s*#{1,6}\\s*"), "")
+        text = text.replace("**", "").replace("__", "").replace("```", "")
+        text = text.replace(Regex("\\n{3,}"), "\\n\\n")
+        return text.trim().ifBlank { "Aku belum mendapat jawaban. Coba ulangi ya." }
+    }
+
+    fun cleanForSpeech(raw: String): String = cleanReply(raw)
+
+    private fun bitmapDataUrl(bitmap: Bitmap): String {
         val scaled = scale(bitmap, 1024)
         val out = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, 78, out)
+        scaled.compress(Bitmap.CompressFormat.JPEG, 76, out)
         if (scaled !== bitmap) scaled.recycle()
         return "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
@@ -81,6 +106,6 @@ object AIClient {
         val side = maxOf(bitmap.width, bitmap.height)
         if (side <= maxSide) return bitmap
         val ratio = maxSide.toFloat() / side
-        return Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
+        return Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt().coerceAtLeast(1), (bitmap.height * ratio).toInt().coerceAtLeast(1), true)
     }
 }

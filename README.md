@@ -1,23 +1,35 @@
-# Floating AI Orb 2.0
+# Floating AI Orb 3.0
 
-Versi ini memperbaiki crash foreground-service MediaProjection dan membuat orb dapat muncul tanpa harus menyalakan screen capture terlebih dahulu.
+Upgrade besar untuk Android phone-first:
 
-## Fitur
-- Floating orb dengan glow/pulse animation dan drag.
-- Overlay chat AI yang bisa menerima input teks dan respons dari Groq/OpenAI-compatible endpoint.
-- Screen capture Android dengan izin sistem, lalu tombol `Lihat layar` untuk mengirim frame terakhir ke AI vision.
-- Kamera dari aplikasi melalui Android Camera intent; foto dapat dilampirkan ke pertanyaan AI.
-- API key, endpoint, dan model dapat diubah dari aplikasi, bukan ditanam permanen di source.
-- Ikon/logo Floating AI Orb.
-- GitHub Actions memakai Java 17 + Gradle 8.9.
-
-## Konfigurasi AI
-Default endpoint: `https://api.groq.com/openai/v1/chat/completions`
-Default model: `qwen/qwen3.6-27b`
-
-Masukkan API key sendiri pada menu `SETUP`. Jangan commit API key ke GitHub.
+- Responsive portrait layout untuk HP kecil maupun besar.
+- Floating Orb yang bisa digeser, ketuk untuk membuka panel, panel dapat ditutup/minimize.
+- Panel overlay dengan drag header, chat, screen vision, dan tombol Voice yang membuka voice mode.
+- Voice chat memakai Android SpeechRecognizer + Text-to-Speech.
+- Preset suara Kawaii, Cute, Cool, dan Cyber melalui pitch/speech-rate TTS Android.
+- Kamera full-resolution melalui FileProvider, bukan preview kecil.
+- Screen capture via MediaProjection foreground service.
+- Chat output dibersihkan dari <think>, reasoning, heading markdown, dan code fence.
+- Quick prompts, status voice, animasi glow, dan UI yang lebih padat untuk layar HP.
+- API key tetap di SharedPreferences perangkat, tidak ditanam di source.
 
 ## Build
-Workflow: `.github/workflows/android.yml`.
 
-Build lokal: `gradle --no-daemon clean assembleDebug` dengan JDK 17 dan Gradle 8.9.
+GitHub Actions memakai Java 17 dan Gradle 8.9.
+
+Workflow: `.github/workflows/android.yml`
+
+## Setup
+
+Buka aplikasi → SETUP → masukkan API key, model, dan endpoint. Untuk vision, pilih model vision yang tersedia pada provider kamu.
+
+## Voice
+
+Berikan izin microphone saat diminta. Suara anime-style adalah preset pitch/rate TTS Android; pilihan suara aktual tetap mengikuti engine TTS yang terpasang di HP.
+
+## V4 AI Action Assist
+- Voice/text commands: "Buka TikTok", "Buka WhatsApp", etc.
+- TikTok assist command example: "Buka TikTok, buka komentar, tulis halo semuanya".
+- The Accessibility Service must be enabled manually in Android Settings.
+- The service may navigate and fill text, but the final public Send action always opens an explicit confirmation screen.
+- No mass-commenting or background spam loop is included.
