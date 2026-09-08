@@ -144,7 +144,14 @@ class ScreenCaptureService : Service() {
             .setPositiveButton("OK", null)
             .create()
 
-        // AlertDialog dari service membutuhkan window type overlay.
+        panel.setOnShowListener {
+            panel.window?.setType(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else
+                    WindowManager.LayoutParams.TYPE_PHONE
+            )
+        }
         panel.window?.setType(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
