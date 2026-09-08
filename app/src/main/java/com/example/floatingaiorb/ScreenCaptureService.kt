@@ -134,9 +134,9 @@ class ScreenCaptureService : Service() {
 
         val scroll=ScrollView(this).apply{isFillViewport=true}
         val messages=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
-        scroll.addView(messages,ScrollView.LayoutParams(-1,-1));panel.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        scroll.addView(messages,android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));panel.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         addBubble(messages,"ai","Siap. Kamu bisa chat di sini, melihat layar, atau pindah ke aplikasi untuk mode suara.")
-        val input=EditText(this).apply{hint="Tanya AI…";textSize=14f;setTextColor(Color.WHITE);setHintTextColor(0xFF78859A.toInt());setPadding(dp(13),dp(8),dp(13),dp(8));background=roundedStroke(0xFF0F1522,0x667E5BF0,dp(12));maxLines=3}
+        val input=EditText(this).apply{hint="Tanya AI…";textSize=14f;setTextColor(Color.WHITE);setHintTextColor(0xFF78859A.toInt());setPadding(dp(13),dp(8),dp(13),dp(8));background=roundedStroke(0xFF0F1522.toInt(),0x667E5BF0.toInt(),dp(12));maxLines=3}
         panel.addView(input,LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(7)})
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val send=actionButton("Kirim");val screen=actionButton("Lihat layar");val voice=actionButton("Voice")

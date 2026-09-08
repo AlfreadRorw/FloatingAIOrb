@@ -55,7 +55,7 @@ class TikTokAssistService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         // First try to open comments if the user asked for a comment flow.
         val commentButton = findAny(root, listOf("comment", "komentar", "comments"))
-        if (commentButton != null && !findEditable(root)) {
+        if (commentButton != null && findEditable(root) == null) {
             clickUp(commentButton); handler.postDelayed({ assist() }, 700); return
         }
         val input = findEditable(root) ?: findAny(root, listOf("add comment", "tambahkan komentar", "comment"))

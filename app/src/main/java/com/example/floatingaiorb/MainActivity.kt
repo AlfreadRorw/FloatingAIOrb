@@ -103,9 +103,9 @@ class MainActivity : ComponentActivity() {
         setContent { OrbTheme { AppRoot() } }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent?.getBooleanExtra("AUTO_VOICE", false) == true) voiceEngine?.startListening()
+        if (intent.getBooleanExtra("AUTO_VOICE", false)) voiceEngine?.startListening()
     }
 
     override fun onResume() {
@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
     private fun launchFullCamera() {
         val file = File.createTempFile("orb_camera_", ".jpg", cacheDir)
         pendingPhotoUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-        takePicture.launch(pendingPhotoUri)
+        pendingPhotoUri?.let { takePicture.launch(it) }
     }
 
     private fun captureCamera() {

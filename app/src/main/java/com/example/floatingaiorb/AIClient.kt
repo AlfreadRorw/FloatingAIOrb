@@ -72,7 +72,7 @@ object AIClient {
         }
     }
 
-    private const val SYSTEM_PROMPT = """
+    private val SYSTEM_PROMPT = """
         Kamu adalah Floating AI Orb, asisten Android yang ringkas, natural, hangat, dan pintar.
         Jawab memakai bahasa pengguna. Jangan pernah menampilkan proses berpikir internal, tag <think>, reasoning, atau catatan internal.
         Jangan menulis markdown mentah yang tidak perlu. Gunakan paragraf pendek dan bullet sederhana hanya bila membantu.
