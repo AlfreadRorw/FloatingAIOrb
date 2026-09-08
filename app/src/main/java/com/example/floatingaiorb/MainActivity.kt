@@ -180,6 +180,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun AppRoot() {
         var showSettings by remember { mutableStateOf(false) }
+        var activeTab by remember { mutableStateOf("Home") }
         val voiceState by remember { derivedStateOf { AppMemory.voiceState } }
         var apiKey by remember { mutableStateOf(prefs.getString("key", "").orEmpty()) }
         var model by remember { mutableStateOf(prefs.getString("model", AIClient.DEFAULT_MODEL).orEmpty()) }
@@ -207,7 +208,7 @@ class MainActivity : ComponentActivity() {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF060914), Color(0xFF0D1020), Color(0xFF080A12))))) {
             AnimatedBackground()
             Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Header(onSettings = { showSettings = !showSettings }, voiceState = voiceState)
+                Header(voiceState = voiceState)
                 FeatureRow(
                     onOrb = { ensureOverlayAndShow() },
                     onScreen = { requestCapture() },
@@ -252,25 +253,27 @@ class MainActivity : ComponentActivity() {
                             VoiceEngine.State.LISTENING -> voiceEngine?.stopListening()
                             VoiceEngine.State.SPEAKING -> voiceEngine?.stopSpeaking()
                             else -> {
-                                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    voiceEngine?.startListening()
-                                } else {
-                                    microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
-                                }
+                                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) voiceEngine?.startListening()
+                                else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }
                     },
-                    onSpeak = {
-                        val lastAi = messages.lastOrNull { it.role == "ai" }
-                        if (lastAi != null) voiceEngine?.speak(lastAi.text)
-                    }
+                    onSpeak = { messages.lastOrNull { it.role == "ai" }?.let { voiceEngine?.speak(it.text) } }
+                )
+                Spacer(Modifier.height(8.dp))
+                BottomHotbar(
+                    active = activeTab,
+                    onHome = { activeTab = "Home"; showSettings = false },
+                    onOrb = { activeTab = "Orb"; ensureOverlayAndShow() },
+                    onScreen = { activeTab = "Screen"; requestCapture() },
+                    onSettings = { activeTab = "Settings"; showSettings = true }
                 )
             }
 
             AnimatedVisibility(
                 visible = showSettings,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 2 }),
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 76.dp, start = 12.dp, end = 12.dp)
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 74.dp, start = 12.dp, end = 12.dp)
             ) {
                 SetupCard(
                     apiKey = apiKey,
@@ -334,23 +337,23 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Header(onSettings: () -> Unit, voiceState: VoiceEngine.State) {
+    private fun Header(voiceState: VoiceEngine.State) {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OrbLogo(Modifier.size(52.dp))
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
-                Text("Floating AI Orb", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    when (voiceState) {
-                        VoiceEngine.State.LISTENING -> "● Mendengarkan..."
-                        VoiceEngine.State.SPEAKING -> "● Berbicara..."
-                        VoiceEngine.State.ERROR -> "● Voice perlu izin"
-                        else -> "AI  •  Vision  •  Voice  •  Overlay"
-                    },
-                    color = if (voiceState == VoiceEngine.State.ERROR) Color(0xFFFF7B8A) else Color(0xFF9CA7BB), fontSize = 12.sp
-                )
+                Text("Floating AI Orb", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+                val status = when (voiceState) {
+                    VoiceEngine.State.LISTENING -> "Lagi dengerin kamu"
+                    VoiceEngine.State.SPEAKING -> "Lagi ngomong"
+                    VoiceEngine.State.ERROR -> "Voice lagi bermasalah"
+                    else -> "Siap bantu kapan aja"
+                }
+                Text(status, color = Color(0xFFA9B1C4), fontSize = 12.sp)
             }
-            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Setup", tint = Color(0xFFB68DFF)) }
+            Surface(shape = RoundedCornerShape(20.dp), color = Color(0xFF171D2B)) {
+                Text("V6", color = Color(0xFFCAB6FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+            }
         }
     }
 
@@ -457,6 +460,26 @@ class MainActivity : ComponentActivity() {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onClick() }) {
             Surface(shape = CircleShape, color = Color(0xFF171D2A), modifier = Modifier.size(40.dp)) { Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = Color(0xFFDAD0FF), modifier = Modifier.size(19.dp)) } }
             Text(label, color = Color(0xFF8893A8), fontSize = 8.sp)
+        }
+    }
+
+    @Composable
+    private fun BottomHotbar(active: String, onHome: () -> Unit, onOrb: () -> Unit, onScreen: () -> Unit, onSettings: () -> Unit) {
+        Surface(shape = RoundedCornerShape(24.dp), color = Color(0xFF101624), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x332E3B58)), modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 8.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                HotbarItem("Home", "⌂", active == "Home", onHome, Modifier.weight(1f))
+                HotbarItem("Orb", "✦", active == "Orb", onOrb, Modifier.weight(1f))
+                HotbarItem("Screen", "◉", active == "Screen", onScreen, Modifier.weight(1f))
+                HotbarItem("Setting", "⚙", active == "Settings", onSettings, Modifier.weight(1f))
+            }
+        }
+    }
+
+    @Composable
+    private fun HotbarItem(label: String, icon: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
+        Column(modifier.clickable { onClick() }.clip(RoundedCornerShape(17.dp)).background(if (selected) Color(0xFF6D42CF) else Color.Transparent).padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(icon, color = if (selected) Color.White else Color(0xFF8993A8), fontSize = 18.sp)
+            Text(label, color = if (selected) Color.White else Color(0xFF8993A8), fontSize = 9.sp, maxLines = 1)
         }
     }
 

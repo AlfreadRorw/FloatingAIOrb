@@ -9,6 +9,6 @@ Perbaikan utama:
 - Tombol cepat: Bersihkan, Salin, TikTok, Screen, Ringkas.
 - Mic permission ditangani di MainActivity.
 - Foreground service mendeklarasikan tipe microphone + mediaProjection.
-- Android Actions menggunakan setup-java v5.
+- Android Actions menggunakan setup-java v6.
 
 Catatan: Screen Vision tetap membutuhkan persetujuan sistem MediaProjection pada Android. Voice tetap membutuhkan izin RECORD_AUDIO. TikTok automation tetap membutuhkan Accessibility Service yang diaktifkan manual oleh pengguna.

@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -43,7 +44,7 @@ class ScreenCaptureService : Service() {
         private const val CHANNEL_ID = "floating_orb_service"
         private const val NOTIFICATION_ID = 1001
         private const val HISTORY_KEY = "overlay_history_v2"
-        private const val DRAFT_KEY = "overlay_draft_v2"
+        private const val DRAFT_KEY = "overlay_draft_v6"
         private const val MAX_HISTORY = 60
     }
 
@@ -65,6 +66,10 @@ class ScreenCaptureService : Service() {
     private var voiceEngine: VoiceEngine? = null
     @Volatile private var snapshotInProgress = false
     private var pendingScreenPrompt: String? = null
+    private var pendingSpeakReply = false
+    private var frameGeneration = 0
+    private var voiceSessionActive = false
+    private var autoSpeakReplies = true
 
     override fun onCreate() {
         super.onCreate()
@@ -81,14 +86,7 @@ class ScreenCaptureService : Service() {
                     }
                 }
             },
-            onText = { text ->
-                mainHandler.post {
-                    chatInput?.setText(text)
-                    chatInput?.setSelection(chatInput?.text?.length ?: 0)
-                    setVoiceStatus("Teks dari Voice siap dikirim")
-                    chatInput?.requestFocus()
-                }
-            }
+            onText = { text -> mainHandler.post { handleVoiceResult(text) } }
         )
     }
 
@@ -170,6 +168,7 @@ class ScreenCaptureService : Service() {
         synchronized(this) {
             lastFrame?.recycle()
             lastFrame = safeCopy
+            frameGeneration++
         }
         cropped.recycle()
     }
@@ -288,7 +287,8 @@ class ScreenCaptureService : Service() {
         val tiktok = actionButton("TikTok")
         val screenStatus = actionButton(if (isRunning) "Screen ✓" else "Screen")
         val summarize = actionButton("Ringkas")
-        listOf(clear, copy, share, tiktok, screenStatus, summarize).forEachIndexed { index, button ->
+        val speakToggle = actionButton(if (autoSpeakReplies) "Suara On" else "Suara Off")
+        listOf(clear, copy, share, tiktok, screenStatus, summarize, speakToggle).forEachIndexed { index, button ->
             quickRow.addView(button, LinearLayout.LayoutParams(dp(78), dp(38)).apply { if (index > 0) leftMargin = dp(6) })
         }
         quickScroll.addView(quickRow, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
@@ -334,17 +334,9 @@ class ScreenCaptureService : Service() {
             val q = input.text?.toString()?.trim().orEmpty()
             val finalQ = if (q.isBlank() && attachScreen) "Apa yang terlihat di layar ini? Jelaskan yang penting secara singkat." else q
             if (finalQ.isBlank()) return
-            addHistoryAndBubble(messages, "user", finalQ, attachScreen)
             input.setText("")
             draftText = ""
-            if (attachScreen) {
-                pendingScreenPrompt = finalQ
-                requestCleanSnapshot(messages, scroll)
-                savePersistentChat()
-                return
-            }
-            callAi(messages, scroll, finalQ, null)
-            savePersistentChat()
+            submitPrompt(finalQ, attachScreen, speakReply = false)
         }
 
         input.addTextChangedListener(object : TextWatcher {
@@ -398,6 +390,11 @@ class ScreenCaptureService : Service() {
                 requestCaptureFromActivity()
             }
         }
+        speakToggle.setOnClickListener {
+            autoSpeakReplies = !autoSpeakReplies
+            speakToggle.text = if (autoSpeakReplies) "Suara On" else "Suara Off"
+            Toast.makeText(this, if (autoSpeakReplies) "Jawaban suara aktif" else "Jawaban suara dimatikan", Toast.LENGTH_SHORT).show()
+        }
         summarize.setOnClickListener {
             val q = "Ringkas isi layar ini menjadi poin-poin penting, singkat dan jelas."
             val image = synchronized(this) { lastFrame?.copy(Bitmap.Config.ARGB_8888, false) }
@@ -449,51 +446,65 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun requestCleanSnapshot(messages: LinearLayout, scroll: ScrollView) {
+    private fun requestCleanSnapshot(messages: LinearLayout, scroll: ScrollView, speakReply: Boolean = false) {
         if (snapshotInProgress) return
         if (projection == null) {
+            snapshotInProgress = true
+            pendingScreenPrompt = pendingScreenPrompt ?: "Apa yang terlihat di layar ini? Jelaskan yang penting secara singkat."
+            pendingSpeakReply = speakReply
             requestCaptureFromActivity()
             return
         }
         snapshotInProgress = true
+        pendingSpeakReply = speakReply
         val prompt = pendingScreenPrompt.orEmpty()
         val hadPanel = chatPanel != null
         val hadOrb = orbContainer != null
+        val startGeneration = synchronized(this) { frameGeneration }
         if (hadPanel) hideChatPanel() else savePersistentChat()
         if (hadOrb) {
             orbContainer?.let { runCatching { windowManager?.removeView(it) } }
             orbContainer = null
         }
-        mainHandler.postDelayed({
+        waitForCleanFrame(startGeneration, 0) {
             val frame = synchronized(this) { lastFrame?.copy(Bitmap.Config.ARGB_8888, false) }
             showOrb()
             if (hadPanel) showChatPanel()
             snapshotInProgress = false
             pendingScreenPrompt = null
+            val targetMessages = chatMessages ?: messages
+            val targetScroll = chatScroll ?: scroll
             if (frame == null) {
-                addHistoryAndBubble(messages, "ai", "Layar belum kebaca. Coba tekan Lihat layar lagi ya.")
-                savePersistentChat()
-                return@postDelayed
+                addHistoryAndBubble(targetMessages, "ai", "Layarnya belum kebaca. Coba lagi bentar ya.")
+            } else {
+                addScreenPreview(targetMessages, frame.copy(Bitmap.Config.ARGB_8888, false))
+                callAi(targetMessages, targetScroll, prompt, frame, pendingSpeakReply)
             }
-            addScreenPreview(messages, frame.copy(Bitmap.Config.ARGB_8888, false))
-            callAi(messages, scroll, prompt, frame)
+            pendingSpeakReply = false
             savePersistentChat()
-        }, 420L)
+        }
+    }
+
+    private fun waitForCleanFrame(startGeneration: Int, attempts: Int, done: () -> Unit) {
+        if (frameGeneration > startGeneration || attempts >= 8) {
+            done()
+        } else {
+            mainHandler.postDelayed({ waitForCleanFrame(startGeneration, attempts + 1, done) }, 120L)
+        }
     }
 
     private fun captureCleanSnapshot() {
-        if (!snapshotInProgress || pendingScreenPrompt == null || chatPanel == null && orbContainer == null) return
+        if (!snapshotInProgress || pendingScreenPrompt == null) return
         val prompt = pendingScreenPrompt.orEmpty()
         val hadPanel = chatPanel != null
         val hadOrb = orbContainer != null
+        val startGeneration = synchronized(this) { frameGeneration }
         if (hadPanel) hideChatPanel() else savePersistentChat()
         if (hadOrb) {
             orbContainer?.let { runCatching { windowManager?.removeView(it) } }
             orbContainer = null
         }
-        mainHandler.postDelayed({
-            // A fresh frame is captured while every Floating AI window is hidden.
-            // The overlay is restored immediately afterwards.
+        waitForCleanFrame(startGeneration, 0) {
             val frame = synchronized(this) { lastFrame?.copy(Bitmap.Config.ARGB_8888, false) }
             showOrb()
             if (hadPanel) showChatPanel()
@@ -503,12 +514,11 @@ class ScreenCaptureService : Service() {
             val targetScroll = chatScroll
             if (frame != null && targetMessages != null && targetScroll != null) {
                 addScreenPreview(targetMessages, frame.copy(Bitmap.Config.ARGB_8888, false))
-                callAi(targetMessages, targetScroll, prompt, frame)
-                savePersistentChat()
-            } else {
-                frame?.recycle()
-            }
-        }, 420L)
+                callAi(targetMessages, targetScroll, prompt, frame, pendingSpeakReply)
+            } else frame?.recycle()
+            pendingSpeakReply = false
+            savePersistentChat()
+        }
     }
 
     private fun addScreenPreview(c: LinearLayout, bitmap: Bitmap) {
@@ -526,7 +536,7 @@ class ScreenCaptureService : Service() {
         c.addView(row)
     }
 
-    private fun callAi(messages: LinearLayout, scroll: ScrollView, prompt: String, image: Bitmap?) {
+    private fun callAi(messages: LinearLayout, scroll: ScrollView, prompt: String, image: Bitmap?, speakReply: Boolean = false) {
         addBubble(messages, "ai", "Sedang menjawab…", typing = true)
         val prefs = getSharedPreferences("orb", Context.MODE_PRIVATE)
         val key = prefs.getString("key", "").orEmpty()
@@ -534,7 +544,9 @@ class ScreenCaptureService : Service() {
         val endpoint = prefs.getString("endpoint", AIClient.DEFAULT_ENDPOINT).orEmpty()
         if (key.isBlank()) {
             removeTyping(messages)
-            addHistoryAndBubble(messages, "ai", AIClient.offlineReply(prompt))
+            val offline = AIClient.offlineReply(prompt)
+            addHistoryAndBubble(messages, "ai", offline)
+            if (speakReply || autoSpeakReplies && voiceSessionActive) voiceEngine?.speak(offline)
             image?.recycle()
             savePersistentChat()
             return
@@ -546,6 +558,8 @@ class ScreenCaptureService : Service() {
             mainHandler.post {
                 removeTyping(messages)
                 addHistoryAndBubble(messages, "ai", answer)
+                if (speakReply || autoSpeakReplies && voiceSessionActive) voiceEngine?.speak(answer)
+                voiceSessionActive = false
                 scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
                 savePersistentChat()
             }
@@ -596,21 +610,71 @@ class ScreenCaptureService : Service() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 putExtra("REQUEST_MIC", true)
             }
-            runCatching { startActivity(intent) }.onFailure { Toast.makeText(this, "Buka Floating AI sekali untuk mengizinkan mic.", Toast.LENGTH_LONG).show() }
+            runCatching { startActivity(intent) }
             return
         }
-        if (AppMemory.voiceState == VoiceEngine.State.LISTENING) {
+        if (voiceSessionActive) {
             engine.stopListening()
+            voiceSessionActive = false
             setVoiceStatus("")
-        } else {
-            if (Build.VERSION.SDK_INT >= 29) {
-                val type = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                    if (isRunning) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0
-                runCatching { startForeground(NOTIFICATION_ID, notification(), type) }
-            }
-            else runCatching { startForeground(NOTIFICATION_ID, notification()) }
-            engine.startListening("id-ID")
+            return
         }
+        voiceSessionActive = true
+        // Start listening in the background so the user can keep looking at the current app.
+        if (chatPanel != null) hideChatPanel()
+        if (Build.VERSION.SDK_INT >= 29) {
+            val type = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                if (isRunning) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0
+            runCatching { startForeground(NOTIFICATION_ID, notification(), type) }
+        } else runCatching { startForeground(NOTIFICATION_ID, notification()) }
+        engine.startListening("id-ID")
+    }
+
+    private fun handleVoiceResult(text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        voiceSessionActive = true
+        showChatPanel()
+        val lower = clean.lowercase(Locale.getDefault())
+        val wantsScreen = listOf("coba lihat ini", "lihat ini", "lihat layar", "coba lihat", "lihat dong", "analisis layar", "ini apa", "apa ini").any { lower.contains(it) }
+        val attachScreen = wantsScreen && projection != null
+        if (wantsScreen && projection == null) {
+            val m = chatMessages
+            if (m != null) addHistoryAndBubble(m, "user", clean, true)
+            pendingScreenPrompt = clean
+            pendingSpeakReply = true
+            snapshotInProgress = true
+            requestCaptureFromActivity()
+            voiceEngine?.speak("Oke, nyalain izin lihat layar dulu ya.")
+            return
+        }
+        submitPrompt(clean, attachScreen, speakReply = true)
+    }
+
+    private fun submitPrompt(prompt: String, attachScreen: Boolean, speakReply: Boolean) {
+        val messages = chatMessages ?: run { showChatPanel(); chatMessages } ?: return
+        val scroll = chatScroll ?: return
+        addHistoryAndBubble(messages, "user", prompt, attachScreen)
+        val command = CommandEngine.parse(prompt)
+        if (!attachScreen && command.type != CommandEngine.Type.UNKNOWN) {
+            val ok = CommandEngine.execute(this, command)
+            val reply = if (ok) "Siap, ${command.appName ?: "aplikasinya"} udah kubuka." else "Aplikasinya belum ketemu atau nggak bisa dibuka dari sini."
+            addHistoryAndBubble(messages, "ai", reply)
+            if (speakReply) voiceEngine?.speak(reply)
+            voiceSessionActive = false
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+            savePersistentChat()
+            return
+        }
+        if (attachScreen) {
+            pendingScreenPrompt = prompt
+            pendingSpeakReply = speakReply
+            requestCleanSnapshot(messages, scroll, speakReply)
+        } else {
+            callAi(messages, scroll, prompt, null, speakReply)
+        }
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        savePersistentChat()
     }
 
     private fun setVoiceStatus(text: String) {

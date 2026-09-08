@@ -23,11 +23,17 @@ object CommandEngine {
     )
 
     fun parse(text: String): Command {
-        val t = text.lowercase(Locale.getDefault()).trim().replace("tik tok", "tiktok")
-        val comment = Regex("(?:buka )?tiktok.*?(?:komentar|comment).*?(?:tulis|ketik)\\s+(.+)", RegexOption.IGNORE_CASE).find(text)
+        var t = text.lowercase(Locale.getDefault()).trim().replace("tik tok", "tiktok")
+        t = t.replace(Regex("\\s+"), " ")
+        val aliases = mapOf("yt" to "youtube", "wa" to "whatsapp", "ig" to "instagram")
+        aliases.forEach { (from, to) -> t = t.replace(Regex("\\b${Regex.escape(from)}\\b"), to) }
+        val comment = Regex("(?:buka|bukain|bukakan|jalanin)?\\s*tiktok.*?(?:komentar|comment).*?(?:tulis|ketik)\\s+(.+)", RegexOption.IGNORE_CASE).find(text)
         if (comment != null) return Command(Type.TIKTOK_COMMENT, "TikTok", knownApps["tiktok"]?.firstOrNull(), comment.groupValues[1].trim())
-        val open = knownApps.entries.firstOrNull { (name, _) -> t == name || t.startsWith("buka $name") || t.startsWith("jalankan $name") }
-        if (open != null) return Command(Type.OPEN_APP, open.key, open.value.firstOrNull())
+        val verbs = listOf("buka", "bukain", "bukakan", "tolong buka", "tolong bukain", "jalanin", "jalankan", "nyalain", "masuk")
+        val open = knownApps.entries.firstOrNull { (name, _) ->
+            t == name || verbs.any { verb -> t.startsWith("$verb $name") } || t.contains("buka aplikasi $name")
+        }
+        if (open != null) return Command(Type.OPEN_APP, open.key.replaceFirstChar { it.titlecase(Locale.getDefault()) }, open.value.firstOrNull())
         return Command(Type.UNKNOWN)
     }
 
