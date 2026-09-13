@@ -1,9 +1,6 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.FloatingAIOrb" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#060914</item>
-        <item name="android:navigationBarColor">#060914</item>
-        <item name="android:colorAccent">#8B5CF6</item>
-    </style>
+<resources>
+<style name="Theme.Retro" parent="android:style/Theme.Material.Light.NoActionBar">
+<item name="android:windowFullscreen">true</item>
+<item name="android:navigationBarColor">#000000</item>
+</style>
 </resources>
