@@ -24,11 +24,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    // Keep Java and Kotlin bytecode targets identical.
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-
     buildFeatures { viewBinding false }
 }
 
