@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0A0A0F">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:background="#0F0F18"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_metagz_logo"/>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="METAGZ"
+                android:textColor="#00FF88"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.15"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Supersus Trainer PRO"
+                android:textColor="#66FFFFFF"
+                android:textSize="11sp"/>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="v2.0"
+            android:textColor="#00FF88"
+            android:textSize="11sp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:background="@drawable/bg_chip"/>
+    </LinearLayout>
+
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#0F0F18"
+        app:tabMode="scrollable"
+        app:tabIndicatorColor="#00FF88"
+        app:tabTextColor="#66FFFFFF"
+        app:tabSelectedTextColor="#00FF88"
+        app:tabIndicatorHeight="3dp"
+        app:tabTextAppearance="@style/TabTextAppearance"/>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <LinearLayout
+                android:id="@+id/contentContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- COMBAT -->
+                <LinearLayout android:id="@+id/panelCombat"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:visibility="gone">
+                    <TextView style="@style/SectionTitle" android:text="COMBAT"/>
+                    <Switch android:id="@+id/swGodMode" style="@style/MetaSwitch" android:text="God Mode"/>
+                    <Switch android:id="@+id/swUnlimitedAmmo" style="@style/MetaSwitch" android:text="Unlimited Ammo"/>
+                    <Switch android:id="@+id/swNoRecoil" style="@style/MetaSwitch" android:text="No Recoil"/>
+                    <Switch android:id="@+id/swDamageX10" style="@style/MetaSwitch" android:text="Damage x10"/>
+                    <Switch android:id="@+id/swAutoHeadshot" style="@style/MetaSwitch" android:text="Auto Headshot"/>
+                    <Switch android:id="@+id/swRapidFire" style="@style/MetaSwitch" android:text="Rapid Fire"/>
+                    <Switch android:id="@+id/swFreezeEnemies" style="@style/MetaSwitch" android:text="Freeze Enemies"/>
+                    <Switch android:id="@+id/swAutoHeal" style="@style/MetaSwitch" android:text="Auto Heal"/>
+                    <Switch android:id="@+id/swInfiniteGrenade" style="@style/MetaSwitch" android:text="Infinite Grenade"/>
+                    <Switch android:id="@+id/swOneHitKill" style="@style/MetaSwitch" android:text="One Hit Kill"/>
+                </LinearLayout>
+
+                <!-- MOVEMENT -->
+                <LinearLayout android:id="@+id/panelMovement"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:visibility="gone">
+                    <TextView style="@style/SectionTitle" android:text="MOVEMENT"/>
+                    <Switch android:id="@+id/swSpeedHack" style="@style/MetaSwitch" android:text="Speed Hack"/>
+                    <Switch android:id="@+id/swJumpBoost" style="@style/MetaSwitch" android:text="Jump Boost"/>
+                    <Switch android:id="@+id/swFlyMode" style="@style/MetaSwitch" android:text="Fly Mode"/>
+                    <Switch android:id="@+id/swNoClip" style="@style/MetaSwitch" android:text="No Clip (walk through walls)"/>
+                    <Switch android:id="@+id/swTeleport" style="@style/MetaSwitch" android:text="Teleport to Cursor"/>
+                    <Switch android:id="@+id/swMoonwalk" style="@style/MetaSwitch" android:text="Moonwalk Speed"/>
+                </LinearLayout>
+
+                <!-- VISUAL -->
+                <LinearLayout android:id="@+id/panelVisual"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:visibility="gone">
+                    <TextView style="@style/SectionTitle" android:text="VISUAL"/>
+                    <Switch android:id="@+id/swEspPlayers" style="@style/MetaSwitch" android:text="ESP Players"/>
+                    <Switch android:id="@+id/swEspItems" style="@style/MetaSwitch" android:text="ESP Items"/>
+                    <Switch android:id="@+id/swWallhack" style="@style/MetaSwitch" android:text="Wallhack"/>
+                    <Switch android:id="@+id/swRadarHack" style="@style/MetaSwitch" android:text="Radar Hack"/>
+                    <Switch android:id="@+id/swRemoveFog" style="@style/MetaSwitch" android:text="Remove Fog"/>
+                    <Switch android:id="@+id/swChams" style="@style/MetaSwitch" android:text="Chams (colored models)"/>
+                </LinearLayout>
+
+                <!-- ECONOMY -->
+                <LinearLayout android:id="@+id/panelEconomy"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:visibility="gone">
+                    <TextView style="@style/SectionTitle" android:text="ECONOMY"/>
+                    <Switch android:id="@+id/swUnlimitedGold" style="@style/MetaSwitch" android:text="Unlimited Gold"/>
+                    <Switch android:id="@+id/swUnlimitedGems" style="@style/MetaSwitch" android:text="Unlimited Gems"/>
+                    <Switch android:id="@+id/swUnlockAll" style="@style/MetaSwitch" android:text="Unlock All Weapons"/>
+                    <Switch android:id="@+id/swXpBoost" style="@style/MetaSwitch" android:text="XP Boost x5"/>
+                    <Switch android:id="@+id/swNoCooldown" style="@style/MetaSwitch" android:text="No Skill Cooldown"/>
+                </LinearLayout>
+
+                <!-- PROFILE -->
+                <LinearLayout android:id="@+id/panelProfile"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:visibility="gone">
+                    <TextView style="@style/SectionTitle" android:text="PROFILE"/>
+                    <Button android:id="@+id/btnSave1" style="@style/MetaButton" android:text="SAVE PROFILE"/>
+                    <Button android:id="@+id/btnLoad1" style="@style/MetaButton" android:text="LOAD PROFILE"/>
+                    <Button android:id="@+id/btnReset" style="@style/MetaButtonOutline" android:text="RESET ALL"/>
+                    <TextView style="@style/HintText"
+                        android:text="Profile disimpan lokal di app. Load buat restore semua toggle."/>
+                </LinearLayout>
+
+                <!-- ABOUT -->
+                <LinearLayout android:id="@+id/panelAbout"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:visibility="gone">
+                    <TextView style="@style/SectionTitle" android:text="ABOUT"/>
+                    <TextView style="@style/BodyText"
+                        android:text="METAGZ Cheat v2.0 PRO\n\nAplikasi trainer untuk game Supersus. Overlay floating + auto-launch. Config ditulis ke /sdcard/meta_supersus_cheat.cfg\n\nNote: fitur cheats butuh module tambahan (GameGuardian / Frida) buat baca config dan patch memory game."/>
+                    <TextView style="@style/SectionTitle" android:text="DETECTED GAMES"/>
+                    <TextView style="@style/BodyText" android:id="@+id/tvDetected"
+                        android:text="Scanning..."/>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+
+    <!-- Bottom bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:background="#0F0F18">
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Status: idle"
+            android:textColor="#66FFFFFF"
+            android:textSize="11sp"
+            android:paddingBottom="8dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button android:id="@+id/btnApply" style="@style/MetaButtonOutline"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_marginEnd="6dp" android:text="SAVE CFG"/>
+
+            <Button android:id="@+id/btnFloating" style="@style/MetaButtonOutline"
+                android:layout_width="0dp" android:layout_weight="1"
+                android:layout_marginEnd="6dp" android:text="OVERLAY"/>
+
+            <Button android:id="@+id/btnLaunch" style="@style/MetaButton"
+                android:layout_width="0dp" android:layout_weight="1.4"
+                android:text="START GAME"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

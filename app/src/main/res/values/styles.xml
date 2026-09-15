@@ -1,6 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-<style name="Theme.Retro" parent="android:style/Theme.Material.Light.NoActionBar">
-<item name="android:windowFullscreen">true</item>
-<item name="android:navigationBarColor">#000000</item>
-</style>
+
+    <style name="Theme.MetaGZ" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">#00FF88</item>
+        <item name="colorPrimaryDark">#000000</item>
+        <item name="colorAccent">#00FF88</item>
+        <item name="android:windowBackground">#0A0A0F</item>
+        <item name="android:statusBarColor">#0A0A0F</item>
+        <item name="android:navigationBarColor">#0A0A0F</item>
+    </style>
+
+    <style name="Theme.MetaGZ.Splash" parent="Theme.MetaGZ">
+        <item name="android:windowFullscreen">true</item>
+    </style>
+
+    <style name="TabTextAppearance" parent="TextAppearance.MaterialComponents.Button">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.1</item>
+    </style>
+
+    <style name="SectionTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#00FF88</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.2</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">8dp</item>
+    </style>
+
+    <style name="MetaSwitch" parent="Widget.MaterialComponents.CompoundButton.Switch">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#DDDDDD</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+    </style>
+
+    <style name="MetaButton" parent="Widget.MaterialComponents.Button">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:backgroundTint">#00FF88</item>
+        <item name="android:textColor">#000000</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="cornerRadius">10dp</item>
+    </style>
+
+    <style name="MetaButtonOutline" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#00FF88</item>
+        <item name="strokeColor">#00FF88</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="cornerRadius">10dp</item>
+    </style>
+
+    <style name="BodyText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#BBBBBB</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:lineSpacingMultiplier">1.3</item>
+    </style>
+
+    <style name="HintText" parent="BodyText">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">#66FFFFFF</item>
+        <item name="android:paddingTop">12dp</item>
+    </style>
+
+    <style name="FloatToggle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:gravity">center_vertical</item>
+    </style>
 </resources>

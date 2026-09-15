@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="meta_green">#00FF88</color>
+    <color name="meta_cyan">#00E5FF</color>
+    <color name="meta_magenta">#FF00AA</color>
+    <color name="meta_dark">#0A0A0F</color>
+    <color name="meta_darker">#050508</color>
+</resources>

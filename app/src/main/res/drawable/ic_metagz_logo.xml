@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+
+    <!-- Outer shield -->
+    <path
+        android:fillColor="#0A0A0F"
+        android:strokeColor="#00FF88"
+        android:strokeWidth="3"
+        android:pathData="M60,5 L110,25 L110,70 Q110,105 60,115 Q10,105 10,70 L10,25 Z"/>
+
+    <!-- Inner glow ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.5"
+        android:pathData="M60,15 L100,32 L100,70 Q100,98 60,106 Q20,98 20,70 L20,32 Z"/>
+
+    <!-- Letter M -->
+    <path
+        android:fillColor="#00FF88"
+        android:pathData="M35,40 L35,80 L42,80 L42,55 L50,70 L58,55 L58,80 L65,80 L65,40 L58,40 L50,58 L42,40 Z"/>
+
+    <!-- Letter G -->
+    <path
+        android:fillColor="#00FF88"
+        android:pathData="M75,40 L75,80 L100,80 L100,60 L88,60 L88,66 L93,66 L93,74 L81,74 L81,46 L100,46 L100,40 Z"/>
+
+    <!-- Bottom dot -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M55,90 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"/>
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M65,90 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"/>
+</vector>
