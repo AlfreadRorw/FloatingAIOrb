@@ -1,7 +1,19 @@
-# Build validation notes
+# FloatSpace CI Build Fix
 
-The Android resource XML files were parsed successfully before packaging.
+The GitHub Actions workflow intentionally does **not** use
+`android-actions/setup-android@v3`.
 
-The project is Java-only, so it avoids the Kotlin stdlib duplicate-class issue encountered in the previous ARACHNE project.
+That action can invoke the obsolete SDK package name `tools`. Modern Android SDK
+repositories no longer provide a package named `tools`, which causes:
 
-The Shizuku integration uses API 13.1.5. Shizuku documents that `newProcess` is deprecated and planned for removal in API 14; it is used here through a small compatibility reflection bridge because API 13.1.5 still exposes that underlying capability. A future version can migrate the bridge to a dedicated Shizuku UserService without changing the UI or window engine.
+    Warning: Failed to find package 'tools'
+
+The workflow therefore uses the runner's preinstalled `sdkmanager` directly and
+installs only:
+
+- platform-tools
+- platforms;android-35
+- build-tools;35.0.0
+
+The workflow also accepts SDK licenses non-interactively and builds with JDK 17
+and Gradle 8.9.
