@@ -41,15 +41,24 @@ public class ClockWidgetProvider extends AppWidgetProvider {
         v.setViewVisibility(R.id.widgetSeconds, seconds ? android.view.View.VISIBLE : android.view.View.GONE);
         v.setViewVisibility(R.id.widgetDate, date ? android.view.View.VISIBLE : android.view.View.GONE);
         v.setViewVisibility(R.id.widgetLabel, label ? android.view.View.VISIBLE : android.view.View.GONE);
-        v.setViewVisibility(R.id.widgetSpider, "arachne".equals(style) ? android.view.View.VISIBLE : android.view.View.GONE);
+        v.setViewVisibility(R.id.widgetCore, "arachne".equals(style) ? android.view.View.VISIBLE : android.view.View.GONE);
         v.setViewVisibility(R.id.widgetHud, "terminal".equals(style) ? android.view.View.VISIBLE : android.view.View.GONE);
         v.setViewVisibility(R.id.widgetRing, "minimal".equals(style) ? android.view.View.GONE : android.view.View.VISIBLE);
+        v.setViewVisibility(R.id.widgetBrand, label ? android.view.View.VISIBLE : android.view.View.GONE);
+        v.setViewVisibility(R.id.widgetLive, dim ? android.view.View.GONE : android.view.View.VISIBLE);
+        v.setViewVisibility(R.id.widgetSecondMark, seconds ? android.view.View.VISIBLE : android.view.View.GONE);
 
         v.setTextColor(R.id.widgetTime, accent);
+        v.setTextColor(R.id.widgetBrand, accent);
+        v.setTextColor(R.id.widgetLive, dim ? Color.rgb(55, 57, 65) : blend(accent, Color.WHITE, .15f));
+        v.setTextColor(R.id.widgetSecondMark, dim ? Color.rgb(55, 57, 65) : Color.rgb(98, 102, 116));
         v.setTextColor(R.id.widgetSeconds, dim ? blend(accent, Color.BLACK, .45f) : accent);
         v.setTextColor(R.id.widgetDate, dim ? Color.rgb(90, 92, 100) : Color.rgb(155, 158, 170));
         v.setTextColor(R.id.widgetLabel, dim ? Color.rgb(68, 70, 77) : Color.rgb(108, 111, 121));
         v.setTextColor(R.id.widgetHud, dim ? Color.rgb(68, 70, 77) : accent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            v.setColorStateList(R.id.widgetCore, "setImageTintList", android.content.res.ColorStateList.valueOf(accent));
+        }
         // RemoteViews tinting is available through setColorStateList on API 31+.
         // The old setImageViewTintList call is not part of the public RemoteViews API
         // used by this project and causes javac to fail.
