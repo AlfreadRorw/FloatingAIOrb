@@ -1,9 +1,14 @@
-# ARACHNE CI
+# CI build notes
 
-The workflow explicitly locates `sdkmanager` because GitHub-hosted Ubuntu runners may keep it in a versioned directory such as:
+GitHub Actions uses:
 
-`$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager`
+- JDK 17
+- Android SDK platform 35
+- Build tools 35.0.0
+- Gradle 8.9
+- Android Gradle Plugin 8.7.3
 
-The previous `sdkmanager: command not found` error happened because that directory was not on PATH.
+The project intentionally does not run `sdkmanager "tools"`; only current SDK packages are installed.
 
-The workflow installs Android platform 35 and build-tools 35.0.0, then builds `assembleDebug`.
+Artifact:
+`app/build/outputs/apk/debug/*.apk`

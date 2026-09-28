@@ -1,12 +1,9 @@
-name: Build ARACHNE APK
+name: Build FloatSpace APK
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: [ master, main ]
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build:
@@ -20,77 +17,34 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
-          cache: gradle
+          java-version: '17'
 
-      - name: Locate Android SDK
-        shell: bash
-        run: |
-          set -e
-          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          echo "SDK=$SDK" >> "$GITHUB_ENV"
-          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-
-          SDKMANAGER=""
-          for p in \
-            "$SDK/cmdline-tools/latest/bin/sdkmanager" \
-            "$SDK/cmdline-tools/16.0/bin/sdkmanager" \
-            "$SDK/cmdline-tools/15.0/bin/sdkmanager" \
-            "$SDK/cmdline-tools/14.0/bin/sdkmanager" \
-            "$SDK/tools/bin/sdkmanager"
-          do
-            if [ -x "$p" ]; then
-              SDKMANAGER="$p"
-              break
-            fi
-          done
-
-          if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager -perm -111 2>/dev/null | head -n 1 || true)"
-          fi
-
-          if [ -z "$SDKMANAGER" ]; then
-            echo "::error::sdkmanager tidak ditemukan di Android SDK"
-            find "$SDK" -maxdepth 5 -type f -name sdkmanager -print 2>/dev/null || true
-            exit 1
-          fi
-
-          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
-          echo "Using sdkmanager: $SDKMANAGER"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -e
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          SDKROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDKROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          echo "SDKROOT=$SDKROOT"
+          echo "SDKMANAGER=$SDKMANAGER"
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
-
-      - name: Verify Android environment
-        run: |
-          java -version
-          gradle --version
-          "$SDKMANAGER" --version
-          test -f "$SDK/platforms/android-35/android.jar"
-          test -f "$SDK/build-tools/35.0.0/aapt2"
-          echo "Android SDK OK"
+          gradle-version: '8.9'
 
       - name: Build debug APK
         run: gradle --no-daemon --stacktrace assembleDebug
 
-      - name: Rename APK
-        run: |
-          mkdir -p artifacts
-          cp app/build/outputs/apk/debug/app-debug.apk artifacts/ARACHNE-debug.apk
-
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARACHNE-debug
-          path: artifacts/ARACHNE-debug.apk
+          name: FloatSpace-debug
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

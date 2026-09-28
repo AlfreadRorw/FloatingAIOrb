@@ -1,0 +1,12 @@
+<resources>
+    <color name="fs_bg">#07090D</color>
+    <color name="fs_surface">#0D1118</color>
+    <color name="fs_surface_2">#111822</color>
+    <color name="fs_border">#243041</color>
+    <color name="fs_text">#F4F7FB</color>
+    <color name="fs_muted">#8A95A6</color>
+    <color name="fs_accent">#B58CFF</color>
+    <color name="fs_accent_2">#66E6FF</color>
+    <color name="fs_success">#78E5B0</color>
+    <color name="fs_danger">#FF6B81</color>
+</resources>

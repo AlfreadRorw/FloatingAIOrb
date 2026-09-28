@@ -1,14 +1,7 @@
-# ARACHNE widget build fix
+# Build validation notes
 
-Fixed `ClockWidgetProvider.java`.
+The Android resource XML files were parsed successfully before packaging.
 
-The previous code called `RemoteViews.setImageViewTintList(...)`, which is not a
-public method available to the compiler for this project. The widget now uses
-`RemoteViews.setColorStateList(R.id.widgetRing, "setImageTintList", ...)` on
-Android 12 / API 31+.
+The project is Java-only, so it avoids the Kotlin stdlib duplicate-class issue encountered in the previous ARACHNE project.
 
-This keeps the realtime TextClock behavior and custom widget colors while
-allowing the project to compile with compileSdk 35.
-
-Reference:
-https://developer.android.com/reference/android/widget/RemoteViews
+The Shizuku integration uses API 13.1.5. Shizuku documents that `newProcess` is deprecated and planned for removal in API 14; it is used here through a small compatibility reflection bridge because API 13.1.5 still exposes that underlying capability. A future version can migrate the bridge to a dedicated Shizuku UserService without changing the UI or window engine.
