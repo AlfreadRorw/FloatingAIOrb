@@ -6,7 +6,6 @@ import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.os.Build;
 import android.widget.RemoteViews;
@@ -51,7 +50,13 @@ public class ClockWidgetProvider extends AppWidgetProvider {
         v.setTextColor(R.id.widgetDate, dim ? Color.rgb(90, 92, 100) : Color.rgb(155, 158, 170));
         v.setTextColor(R.id.widgetLabel, dim ? Color.rgb(68, 70, 77) : Color.rgb(108, 111, 121));
         v.setTextColor(R.id.widgetHud, dim ? Color.rgb(68, 70, 77) : accent);
-        if (Build.VERSION.SDK_INT >= 21) v.setImageViewTintList(R.id.widgetRing, ColorStateList.valueOf(accent));
+        // RemoteViews tinting is available through setColorStateList on API 31+.
+        // The old setImageViewTintList call is not part of the public RemoteViews API
+        // used by this project and causes javac to fail.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            v.setColorStateList(R.id.widgetRing, "setImageTintList",
+                    android.content.res.ColorStateList.valueOf(accent));
+        }
 
         int bg = background(style, dim);
         v.setInt(R.id.widgetRoot, "setBackgroundColor", bg);
