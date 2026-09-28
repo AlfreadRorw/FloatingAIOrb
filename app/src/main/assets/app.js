@@ -1,3 +1,4 @@
+document.documentElement.classList.add("booting");
 const $=s=>document.querySelector(s);
 const svgNS="http://www.w3.org/2000/svg";
 const themes={
@@ -84,3 +85,5 @@ $("#reset").onclick=()=>{running=false;elapsed=0;$("#startStop").textContent="ST
 $("#lap").onclick=()=>{if(!elapsed)return;let d=document.createElement("div");d.textContent=`LAP ${$("#laps").children.length+1}   ${chronoText(elapsed)}`;$("#laps").prepend(d)};
 
 let last=performance.now(),frames=0;function fps(now){frames++;if(now-last>1000){$("#fps").textContent=frames+" FPS";frames=0;last=now}requestAnimationFrame(fps)}requestAnimationFrame(fps);
+
+window.addEventListener("load",()=>{document.body.classList.add("ready")});

@@ -14,3 +14,10 @@ ARACHNE is an offline Android kinetic clock with a native, realtime and customiz
 - Tapping the widget opens the ARACHNE app.
 
 The widget uses Android's native `TextClock`, so the displayed time does not depend on a broadcast every second and remains realtime while the launcher is showing it.
+
+
+### Latest polish
+- Native system-bar inset handling so the main UI stays below the status bar / cutout and above the navigation bar on Android 15+.
+- Animated native launch screen with ARACHNE logo, glow, rotation and smooth handoff into the WebView.
+- Custom ARACHNE app icon with spider-clock motif.
+- Web UI now fades/slides into place instead of appearing abruptly.
