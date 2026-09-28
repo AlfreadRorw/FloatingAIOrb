@@ -1,3 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">METAGZ Cheat</string>
+    <string name="app_name">ARACHNE</string>
+    <string name="widget_description">ARACHNE 1×1 kinetic clock widget</string>
 </resources>
