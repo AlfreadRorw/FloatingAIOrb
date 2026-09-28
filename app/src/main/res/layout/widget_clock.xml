@@ -3,15 +3,23 @@
     android:id="@+id/widgetRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
-    android:padding="8dp">
+    android:padding="9dp">
 
     <ImageView
+        android:id="@+id/widgetRing"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:src="@drawable/widget_ring"
         android:scaleType="centerInside"
-        android:contentDescription="@null"/>
+        android:contentDescription="@null" />
+
+    <ImageView
+        android:id="@+id/widgetSpider"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_gravity="center"
+        android:src="@drawable/widget_spider"
+        android:contentDescription="@null" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -19,36 +27,62 @@
         android:gravity="center"
         android:orientation="vertical">
 
-        <TextView
+        <TextClock
             android:id="@+id/widgetTime"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="20:34"
-            android:textColor="#F2E7BF"
+            android:format12Hour="h:mm"
+            android:format24Hour="HH:mm"
+            android:textColor="#E8C66A"
             android:textSize="25sp"
             android:fontFamily="monospace"
-            android:textStyle="normal"
-            android:includeFontPadding="false"/>
+            android:includeFontPadding="false" />
 
-        <TextView
+        <TextClock
             android:id="@+id/widgetSeconds"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="00"
+            android:format12Hour="ss"
+            android:format24Hour="ss"
             android:textColor="#E8C66A"
             android:textSize="9sp"
             android:fontFamily="monospace"
             android:letterSpacing="0.15"
-            android:includeFontPadding="false"/>
+            android:includeFontPadding="false" />
+
+        <TextClock
+            android:id="@+id/widgetDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:format12Hour="EEE, dd MMM"
+            android:format24Hour="EEE, dd MMM"
+            android:textColor="#9B9EAA"
+            android:textSize="7sp"
+            android:fontFamily="monospace"
+            android:includeFontPadding="false"
+            android:layout_marginTop="2dp" />
 
         <TextView
+            android:id="@+id/widgetLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="ARACHNE"
-            android:textColor="#77706A"
+            android:textColor="#6C6F79"
             android:textSize="6sp"
             android:letterSpacing="0.35"
             android:includeFontPadding="false"
-            android:layout_marginTop="3dp"/>
+            android:layout_marginTop="3dp" />
+
+        <TextView
+            android:id="@+id/widgetHud"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="LOCAL / SYSTEM  •  LIVE"
+            android:textColor="#E8C66A"
+            android:textSize="5sp"
+            android:fontFamily="monospace"
+            android:includeFontPadding="false"
+            android:layout_marginTop="2dp"
+            android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>
