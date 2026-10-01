@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'ALFPet'
-include ':app'
+rootProject.name = "ALFPET"
+include(":app")
