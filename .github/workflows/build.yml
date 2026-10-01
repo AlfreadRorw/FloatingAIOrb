@@ -1,65 +1,42 @@
-name: Build Alfread Status Downloader
+name: Build ALF PET APK
 
 on:
   push:
-    branches: [ main, master ]
-    tags: [ 'v*' ]
+    branches: [ "main", "master" ]
   pull_request:
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # Opsional: isi di Settings > Secrets > Actions kalau mau APK ber-signature sendiri
-      KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
-      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
+          cache: gradle
 
-      - name: Accept Android SDK licenses (SDK sudah terpasang di runner)
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
-      - name: Setup Gradle 8.9 (tanpa gradlew)
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.9
-
-      - name: Decode keystore (jika ada)
-        if: ${{ env.KEYSTORE_B64 != '' }}
+      - name: Install Android SDK packages
         run: |
-          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build APK debug + release
-        run: gradle assembleDebug assembleRelease --stacktrace
+      - name: Install Gradle 8.9
+        run: |
+          curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          echo "/tmp/gradle-8.9/bin" >> "$GITHUB_PATH"
 
-      - name: Upload APK debug
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace assembleDebug
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AlfreadStatusDownloader-debug
-          path: app/build/outputs/apk/debug/*.apk
-
-      - name: Upload APK release
-        uses: actions/upload-artifact@v4
-        with:
-          name: AlfreadStatusDownloader-release
-          path: app/build/outputs/apk/release/*.apk
-
-      - name: Publish GitHub Release (saat push tag v*)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/release/*.apk
+          name: ALF-PET-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
