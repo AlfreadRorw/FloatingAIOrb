@@ -1,36 +1,34 @@
-# WhatsStatus Vault
+# Alfread Status Downloader
 
-Offline Android app for collecting WhatsApp status videos into the device Download folder.
+Aplikasi Android (Kotlin + Jetpack Compose, tema hitam-putih) untuk mengunduh status WhatsApp.
 
-## Default paths
-Source:
-`/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses/`
+- Sumber : `/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses/`
+          (+ WA Business & path lama Android 10 ke bawah)
+- Tujuan : `/storage/emulated/0/Download/` (otomatis dipindai agar muncul di Galeri)
 
-Destination:
-`/storage/emulated/0/Download/`
+## Fitur
+- Dock bar: **Status**, **Riwayat**, **Setting**
+- Grid status foto/video dengan thumbnail, filter Semua/Foto/Video
+- Pratinjau layar penuh (foto & video), bagikan, unduh
+- Pilih banyak (tekan lama) lalu unduh sekaligus
+- Riwayat unduhan + statistik, buka/bagikan/hapus
+- Setting: tema (sistem/terang/gelap), kolom grid, urutan, WA Business, mode pindahkan, awalan nama file, kelola izin
+- Header tidak menutupi status bar (sinyal & baterai)
 
-## Features
-- Black/white UI.
-- Status video scanner and thumbnails.
-- Select one or many videos.
-- Download one or all selected videos.
-- Move mode by default; optional copy mode in Settings.
-- Duplicate-safe destination names: `name (1).mp4`, etc.
-- Media scan after transfer so the saved video is discoverable by gallery/media apps.
-- Download history persisted locally.
-- Permission/status screen and direct shortcut to storage access settings.
-- Dock: Status, History, Settings.
-- No account or server required.
+## Build lewat GitHub Actions
+1. Buat repo baru di GitHub, upload semua isi folder ini, push ke branch `main`.
+2. Buka tab **Actions** -> workflow *Build Alfread Status Downloader* berjalan otomatis.
+3. Selesai -> unduh APK di bagian **Artifacts** (`...-release` atau `...-debug`).
+4. Rilis otomatis: `git tag v1.0.0 && git push origin v1.0.0` -> APK masuk ke GitHub Releases.
 
-## Storage note
-This build requests `MANAGE_EXTERNAL_STORAGE` because the core feature directly manages files under shared storage and the exact WhatsApp `.Statuses` path. Android documents `/Android/media` as shared storage and permits direct path access with this special access. Google Play applies policy restrictions to this permission, so this project is suited to direct APK/sideload distribution unless its use fits Play's permitted categories.
+Tidak perlu `gradlew`; workflow memasang Gradle 8.9 sendiri.
 
-## Build locally
-```bash
-./gradlew :app:assembleDebug
-```
-APK:
-`app/build/outputs/apk/debug/app-debug.apk`
+### (Opsional) APK ber-signature sendiri
+Isi Secrets repo: `KEYSTORE_BASE64` (hasil `base64 -w0 release.jks`), `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
+Tanpa itu, APK release ditandatangani dengan debug key (tetap bisa dipasang).
 
-## GitHub Actions
-Push to GitHub and run **Build WhatsStatusVault APK**. The workflow uploads `WhatsStatusVault-debug` as an artifact.
+## Izin
+Android 11+ memakai **Akses semua file** (MANAGE_EXTERNAL_STORAGE) agar bisa membaca `Android/media/com.whatsapp`.
+Android 10 ke bawah memakai izin Penyimpanan biasa.
+
+Lihat `LOGO_GUIDE.md` untuk ukuran logo dan ikon.
