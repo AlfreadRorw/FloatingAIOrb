@@ -4,6 +4,21 @@ import java.io.File
 
 enum class MediaKind { IMAGE, VIDEO }
 
+enum class DeletedMessageType {
+    CHAT, VOICE, PHOTO, VIDEO, DOCUMENT, UNKNOWN
+}
+
+data class DeletedMessage(
+    val id: String,
+    val packageName: String,
+    val sender: String,
+    val text: String,
+    val type: DeletedMessageType,
+    val time: Long,
+    val deletedMarker: Boolean = false,
+    val mediaPath: String? = null
+)
+
 enum class WaSource(val label: String) {
     WHATSAPP("WhatsApp"),
     BUSINESS("WA Business")

@@ -23,6 +23,7 @@ import com.alfread.statusdownloader.R
 
 enum class DockTab(val label: String, @DrawableRes val icon: Int) {
     STATUS("Status", R.drawable.ic_nav_status),
+    DELETED("Dihapus", R.drawable.ic_nav_deleted),
     HISTORY("Riwayat", R.drawable.ic_nav_history),
     SETTINGS("Setting", R.drawable.ic_nav_settings)
 }

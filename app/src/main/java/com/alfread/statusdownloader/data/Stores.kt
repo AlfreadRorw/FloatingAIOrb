@@ -65,3 +65,45 @@ class HistoryStore(context: Context) {
         p.edit().putString("items", arr.toString()).apply()
     }
 }
+
+
+class DeletedMessageStore(context: Context) {
+    private val p = context.getSharedPreferences("deleted_messages", Context.MODE_PRIVATE)
+
+    fun load(): List<DeletedMessage> = runCatching {
+        val arr = JSONArray(p.getString("items", "[]") ?: "[]")
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            DeletedMessage(
+                id = o.getString("id"),
+                packageName = o.optString("package", "com.whatsapp"),
+                sender = o.optString("sender", "WhatsApp"),
+                text = o.optString("text", ""),
+                type = runCatching {
+                    DeletedMessageType.valueOf(o.optString("type", "UNKNOWN"))
+                }.getOrDefault(DeletedMessageType.UNKNOWN),
+                time = o.optLong("time", 0L),
+                deletedMarker = o.optBoolean("deleted", false),
+                mediaPath = o.optString("mediaPath", "").ifBlank { null }
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    fun save(list: List<DeletedMessage>) {
+        val arr = JSONArray()
+        list.take(500).forEach { r ->
+            arr.put(
+                JSONObject()
+                    .put("id", r.id)
+                    .put("package", r.packageName)
+                    .put("sender", r.sender)
+                    .put("text", r.text)
+                    .put("type", r.type.name)
+                    .put("time", r.time)
+                    .put("deleted", r.deletedMarker)
+                    .put("mediaPath", r.mediaPath ?: "")
+            )
+        }
+        p.edit().putString("items", arr.toString()).apply()
+    }
+}

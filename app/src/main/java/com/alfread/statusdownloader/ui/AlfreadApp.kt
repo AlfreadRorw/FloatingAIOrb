@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.alfread.statusdownloader.data.Actions
 import com.alfread.statusdownloader.data.StatusItem
+import com.alfread.statusdownloader.data.DeletedMessage
 import com.alfread.statusdownloader.viewmodel.MainViewModel
 import kotlinx.coroutines.flow.collectLatest
 import java.io.File
@@ -26,6 +27,7 @@ fun AlfreadApp(vm: MainViewModel, onRequestPermission: () -> Unit) {
     val ui by vm.ui.collectAsState()
     val settings by vm.settings.collectAsState()
     val history by vm.history.collectAsState()
+    val deletedMessages by vm.deletedMessages.collectAsState()
 
     var tab by rememberSaveable { mutableStateOf(DockTab.STATUS) }
     var preview by remember { mutableStateOf<StatusItem?>(null) }
@@ -71,6 +73,13 @@ fun AlfreadApp(vm: MainViewModel, onRequestPermission: () -> Unit) {
                             onDownloadSelected = vm::downloadSelected,
                             onPreview = { preview = it },
                             onOpenWhatsApp = { Actions.openWhatsApp(ctx) }
+                        )
+                        DockTab.DELETED -> DeletedMessagesScreen(
+                            messages = deletedMessages,
+                            notificationAccess = vm.hasNotificationAccess(),
+                            onOpenNotificationSettings = { vm.openNotificationSettings(ctx) },
+                            onDelete = vm::deleteDeletedMessage,
+                            onClear = vm::clearDeletedMessages
                         )
                         DockTab.HISTORY -> HistoryScreen(
                             history = history,

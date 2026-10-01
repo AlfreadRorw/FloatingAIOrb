@@ -23,6 +23,16 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Alfread">
 
+        <service
+            android:name=".notification.WhatsAppNotificationListener"
+            android:label="@string/notification_listener_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

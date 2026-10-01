@@ -32,3 +32,7 @@ Android 11+ memakai **Akses semua file** (MANAGE_EXTERNAL_STORAGE) agar bisa mem
 Android 10 ke bawah memakai izin Penyimpanan biasa.
 
 Lihat `LOGO_GUIDE.md` untuk ukuran logo dan ikon.
+
+
+## Arsip Pesan WhatsApp
+Fitur "Pesan Dihapus" menggunakan Android Notification Listener. Aktifkan akses notifikasi di halaman pengaturan Android. Fitur ini mengarsipkan informasi yang memang diterima melalui notifikasi; tidak mengambil pesan dari server WhatsApp dan tidak menjamin pemulihan media yang tidak pernah tersedia di notifikasi.

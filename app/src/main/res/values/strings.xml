@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Alfread Status Downloader</string>
+    <string name="notification_listener_name">Alfread WhatsApp Archive</string>
 </resources>

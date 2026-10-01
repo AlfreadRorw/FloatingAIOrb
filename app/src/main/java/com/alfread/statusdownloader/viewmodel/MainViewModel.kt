@@ -16,11 +16,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val settingsStore = SettingsStore(app)
     private val historyStore = HistoryStore(app)
+    private val deletedStore = DeletedMessageStore(app)
     private val downloader = Downloader(app)
 
     private val _settings = MutableStateFlow(settingsStore.load())
@@ -28,6 +32,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _history = MutableStateFlow(historyStore.load())
     val history: StateFlow<List<HistoryRecord>> = _history.asStateFlow()
+
+    private val _deletedMessages = MutableStateFlow(deletedStore.load())
+    val deletedMessages: StateFlow<List<DeletedMessage>> = _deletedMessages.asStateFlow()
 
     private val _ui = MutableStateFlow(StatusUiState())
     val ui: StateFlow<StatusUiState> = _ui.asStateFlow()
@@ -161,3 +168,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+
+    // ---------- Arsip pesan WhatsApp ----------
+    fun hasNotificationAccess(): Boolean {
+        val enabled = android.service.notification.NotificationListenerService
+            .class.java
+        val flat = Settings.Secure.getString(
+            getApplication<Application>().contentResolver,
+            "enabled_notification_listeners"
+        ) ?: return false
+        return flat.contains(getApplication<Application>().packageName)
+    }
+
+    fun openNotificationSettings(ctx: android.content.Context) {
+        runCatching {
+            ctx.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+        }
+    }
+
+    fun deleteDeletedMessage(item: DeletedMessage) {
+        val updated = _deletedMessages.value.filterNot { it.id == item.id }
+        _deletedMessages.value = updated
+        deletedStore.save(updated)
+    }
+
+    fun clearDeletedMessages() {
+        _deletedMessages.value = emptyList()
+        deletedStore.save(emptyList())
+    }
