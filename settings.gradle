@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'FloatSpace'
-include(':app')
+rootProject.name = "WhatsStatusVault"
+include(":app")

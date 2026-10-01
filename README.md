@@ -1,43 +1,36 @@
-# FloatSpace
+# WhatsStatus Vault
 
-FloatSpace is a polished Android edge launcher / freeform workspace shell.
+Offline Android app for collecting WhatsApp status videos into the device Download folder.
 
-## What it does
+## Default paths
+Source:
+`/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses/`
 
-- Persistent white edge handle on the left or right side of the screen.
-- Tap the edge handle to open a fast all-app drawer.
-- Search installed launcher apps.
-- Pin/favorite apps for a dedicated PINNED tab.
-- Launch multiple apps through Android freeform window mode when the device supports it.
-- Optional Shizuku integration for shell-level `am start` and `am task resize` commands.
-- Workspace controls for the most recently launched freeform task: focus, resize smaller/larger, move left/up/down/right, and force-stop.
-- Edge length, side, haptic feedback, boot startup, glow theme, battery settings and freeform compatibility settings.
-- Optional accessibility helper for OEMs that expose window-state events differently. It does not inspect app content.
+Destination:
+`/storage/emulated/0/Download/`
 
-## Important Android limitation
+## Features
+- Black/white UI.
+- Status video scanner and thumbnails.
+- Select one or many videos.
+- Download one or all selected videos.
+- Move mode by default; optional copy mode in Settings.
+- Duplicate-safe destination names: `name (1).mp4`, etc.
+- Media scan after transfer so the saved video is discoverable by gallery/media apps.
+- Download history persisted locally.
+- Permission/status screen and direct shortcut to storage access settings.
+- Dock: Status, History, Settings.
+- No account or server required.
 
-A normal third-party app cannot directly render another installed app's UI inside its own overlay view. FloatSpace therefore uses Android's real freeform task/window manager where the device exposes it. Android documents `TYPE_APPLICATION_OVERLAY` for the edge UI, while real freeform task launch/resize is driven here through the shell identity supplied by Shizuku.
+## Storage note
+This build requests `MANAGE_EXTERNAL_STORAGE` because the core feature directly manages files under shared storage and the exact WhatsApp `.Statuses` path. Android documents `/Android/media` as shared storage and permits direct path access with this special access. Google Play applies policy restrictions to this permission, so this project is suited to direct APK/sideload distribution unless its use fits Play's permitted categories.
 
-On some phones the OEM blocks freeform windows, changes the shell command behavior, or provides its own mini-window implementation. In that case FloatSpace can still act as the edge launcher, but third-party app windows may open full-screen or refuse freeform placement.
+## Build locally
+```bash
+./gradlew :app:assembleDebug
+```
+APK:
+`app/build/outputs/apk/debug/app-debug.apk`
 
-## Shizuku
-
-Install and start Shizuku, then grant FloatSpace its permission. Shizuku's official API documentation supports adding the `api` and `provider` dependencies and describes shell/user-service access. The project uses Shizuku 13.1.5.
-
-Recommended device setup when available:
-
-1. Start Shizuku.
-2. Grant FloatSpace Shizuku permission.
-3. Grant FloatSpace "Display over other apps".
-4. On devices exposing them, enable "freeform windows" and "force activities to be resizable" in Developer Options.
-5. Disable aggressive battery optimization for FloatSpace if the edge handle is killed in the background.
-
-## Build
-
-The project is prepared for Gradle 8.9, Android Gradle Plugin 8.7.3, compileSdk 35 and targetSdk 35.
-
-GitHub Actions is configured in `.github/workflows/build.yml` and uploads a debug APK artifact.
-
-## Safety / permissions
-
-FloatSpace does not read the content of other apps. The accessibility service is optional and does not use `AccessibilityNodeInfo` or screen scraping.
+## GitHub Actions
+Push to GitHub and run **Build WhatsStatusVault APK**. The workflow uploads `WhatsStatusVault-debug` as an artifact.

@@ -1,6 +1,0 @@
-<resources>
-    <string name="app_name">FloatSpace</string>
-    <string name="service_channel">FloatSpace overlay</string>
-    <string name="service_channel_desc">Keeps the floating edge handle available.</string>
-    <string name="accessibility_desc">Optional task and window state helper for FloatSpace.</string>
-</resources>

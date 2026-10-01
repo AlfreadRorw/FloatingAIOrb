@@ -1,2 +1,1 @@
--keep class rikka.shizuku.** { *; }
--keep class com.alfread.floatspace.** { *; }
+# WhatsStatusVault keeps dependencies simple; no custom rules are required.

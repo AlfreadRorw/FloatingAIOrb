@@ -1,9 +1,9 @@
-name: Build FloatSpace APK
+name: Build WhatsStatusVault APK
 
 on:
-  push:
-    branches: [ master, main ]
   workflow_dispatch:
+  push:
+    branches: ["main", "master"]
 
 permissions:
   contents: read
@@ -11,7 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,61 +22,23 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Prepare Android SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          SDKROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          export ANDROID_SDK_ROOT="$SDKROOT"
-          export ANDROID_HOME="$SDKROOT"
-
-          echo "ANDROID_SDK_ROOT=$SDKROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$SDKROOT" >> "$GITHUB_ENV"
-
-          # Do not use android-actions/setup-android here.
-          # Its v3 action currently calls `sdkmanager tools`, but the
-          # obsolete `tools` package no longer exists in modern SDK repos.
-          SDKMANAGER="$(find "$SDKROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n 1)"
-          if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager not found under $SDKROOT/cmdline-tools"
-            exit 1
-          fi
-
-          echo "Using sdkmanager: $SDKMANAGER"
-
-          # Accept only the licenses required by the packages we install.
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-
-          "$SDKMANAGER" --sdk_root="$SDKROOT" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-          "$SDKROOT/platform-tools/adb" version
-          test -d "$SDKROOT/platforms/android-35"
-          test -d "$SDKROOT/build-tools/35.0.0"
-
-          echo "Android SDK ready"
-
-      - name: Set up Gradle 8.9
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Show build environment
-        shell: bash
-        run: |
-          java -version
-          gradle --version
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace clean assembleDebug
+        run: gradle :app:assembleDebug --stacktrace
 
-      - name: Upload debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FloatSpace-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: WhatsStatusVault-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
