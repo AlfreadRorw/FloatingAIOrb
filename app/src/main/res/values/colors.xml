@@ -1,5 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_bg">#FFFFFFFF</color>
-    <color name="ic_launcher_background">#FF000000</color>
+    <color name="alf_background">#F7F7F8</color>
+    <color name="alf_surface">#FFFFFF</color>
+    <color name="alf_primary">#5B7CFF</color>
+    <color name="alf_secondary">#8A72D8</color>
+    <color name="alf_text">#17181C</color>
+    <color name="alf_muted">#777980</color>
+    <color name="alf_hunger">#E88A4A</color>
+    <color name="alf_happiness">#DB5D8A</color>
+    <color name="alf_energy">#5D8BDB</color>
+    <color name="alf_cleanliness">#59A88D</color>
 </resources>

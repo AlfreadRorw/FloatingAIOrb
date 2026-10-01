@@ -1,45 +1,44 @@
-# Alfread Status Downloader
+# ALF PET
 
-Aplikasi Android (Kotlin + Jetpack Compose, tema hitam-putih) untuk mengunduh status WhatsApp.
+Offline digital pet game for Android, built with Kotlin, Jetpack Compose and Material 3.
 
-- Sumber : `/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses/`
-          (+ WA Business & path lama Android 10 ke bawah)
-- Tujuan : `/storage/emulated/0/Download/` (otomatis dipindai agar muncul di Galeri)
+## Requirements
 
-## Fitur
-- Dock bar: **Status**, **Riwayat**, **Setting**
-- Grid status foto/video dengan thumbnail, filter Semua/Foto/Video
-- Pratinjau layar penuh (foto & video), bagikan, unduh
-- Pilih banyak (tekan lama) lalu unduh sekaligus
-- Riwayat unduhan + statistik, buka/bagikan/hapus
-- Setting: tema (sistem/terang/gelap), kolom grid, urutan, WA Business, mode pindahkan, awalan nama file, kelola izin
-- Header tidak menutupi status bar (sinyal & baterai)
-- Tab **Terhapus**: pemulihan pesan WhatsApp yang dihapus pengirim (teks, foto, video, VN/audio, dokumen)
-  - Teks: dibaca dari notifikasi WhatsApp (NotificationListenerService), ditandai DIHAPUS saat pengirim menghapus
-  - Media: otomatis dicadangkan saat masuk, lalu dikaitkan ke pesannya
-  - Pencarian, filter tipe, pemutar VN, simpan ke Download, retensi catatan (7/30/90 hari/selamanya)
-  - Semua data tersimpan lokal di HP, tidak dikirim ke server mana pun
+- Android Studio with Android SDK 35
+- JDK 17
+- Gradle 8.9 or newer compatible with AGP 8.7.3
 
-### Syarat agar Terhapus berfungsi
-1. Aktifkan **Akses Notifikasi** untuk Alfread (Android 13+ untuk APK di luar Play Store: Info Aplikasi -> menu tiga titik -> *Izinkan setelan terbatas*, lalu ulangi).
-2. Aktifkan **unduh otomatis media** di WhatsApp agar foto/video/VN/dokumen sudah ada di HP saat pesan masuk.
-3. Matikan penghemat baterai untuk Alfread agar layanan notifikasi tidak dimatikan sistem.
-4. Hanya pesan yang masuk SAAT pencatatan aktif yang bisa dipulihkan; pesan lama sebelum aplikasi dipasang tidak bisa.
+## Features
 
-## Build lewat GitHub Actions
-1. Buat repo baru di GitHub, upload semua isi folder ini, push ke branch `main`.
-2. Buka tab **Actions** -> workflow *Build Alfread Status Downloader* berjalan otomatis.
-3. Selesai -> unduh APK di bagian **Artifacts** (`...-release` atau `...-debug`).
-4. Rilis otomatis: `git tag v1.0.0 && git push origin v1.0.0` -> APK masuk ke GitHub Releases.
+- 8-frame local cat idle animation using `idle_01.png` through `idle_08.png`
+- Hunger, Happiness, Energy and Cleanliness systems
+- Mood calculation
+- Coins and XP
+- Progressive levels with increasing XP requirements
+- Offline time decay based on `lastUpdate`
+- Local persistence with SharedPreferences
+- Feed, Play, Sleep and Clean actions
+- Button press and pet interaction animations
+- Level-up overlay
+- Responsive portrait/landscape-friendly Compose layout
+- No Firebase, server, login or gameplay network access
 
-Tidak perlu `gradlew`; workflow memasang Gradle 8.9 sendiri.
+## Build
 
-### (Opsional) APK ber-signature sendiri
-Isi Secrets repo: `KEYSTORE_BASE64` (hasil `base64 -w0 release.jks`), `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
-Tanpa itu, APK release ditandatangani dengan debug key (tetap bisa dipasang).
+```bash
+gradle assembleDebug
+```
 
-## Izin
-Android 11+ memakai **Akses semua file** (MANAGE_EXTERNAL_STORAGE) agar bisa membaca `Android/media/com.whatsapp`.
-Android 10 ke bawah memakai izin Penyimpanan biasa.
+APK output:
 
-Lihat `LOGO_GUIDE.md` untuk ukuran logo dan ikon.
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
+## Assets
+
+The supplied cat sprite sheet was split into the required eight drawable frames without renaming the frame names. The black background around each frame was made transparent so the cat integrates cleanly into the room.
+
+## GitHub Actions
+
+The workflow in `.github/workflows/build.yml` installs Android SDK 35, configures JDK 17 and Gradle, builds the debug APK, and uploads the artifact as `ALF-PET-debug-apk`.
