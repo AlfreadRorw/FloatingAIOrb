@@ -167,13 +167,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
     }
-}
-
 
     // ---------- Arsip pesan WhatsApp ----------
     fun hasNotificationAccess(): Boolean {
-        val enabled = android.service.notification.NotificationListenerService
-            .class.java
         val flat = Settings.Secure.getString(
             getApplication<Application>().contentResolver,
             "enabled_notification_listeners"
@@ -181,7 +177,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return flat.contains(getApplication<Application>().packageName)
     }
 
-    fun openNotificationSettings(ctx: android.content.Context) {
+    fun openNotificationSettings(ctx: Context) {
         runCatching {
             ctx.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
         }
@@ -197,3 +193,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _deletedMessages.value = emptyList()
         deletedStore.save(emptyList())
     }
+
+}
+
