@@ -95,6 +95,10 @@ data class Prefs(
     val dockSize: Int = 1,       // 0 kecil, 1 sedang, 2 besar
     val dockOpacity: Float = 0.92f,
     val dockBadge: Boolean = true,
+    // jendela mengambang
+    val floatingEnabled: Boolean = false,
+    val bubbleX: Int = -1,
+    val bubbleY: Int = -1,
     // tampilan
     val accent: Int = 0,
     // default unduhan

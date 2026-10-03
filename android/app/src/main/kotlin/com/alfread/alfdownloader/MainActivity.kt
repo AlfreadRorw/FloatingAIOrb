@@ -89,6 +89,14 @@ private fun App(resumeTick: Int, shared: String?, onSharedConsumed: () -> Unit) 
 
     LaunchedEffect(Unit) { c.boot() }
 
+    LaunchedEffect(Unit) {
+        if (c.prefs.floatingEnabled && !com.alfread.alfdownloader.overlay.OverlayController.isRunning &&
+            com.alfread.alfdownloader.overlay.OverlayController.canDrawOverlays(context)
+        ) {
+            com.alfread.alfdownloader.overlay.OverlayController.start(context)
+        }
+    }
+
     LaunchedEffect(resumeTick) {
         kotlinx.coroutines.delay(350)
         c.onResume()

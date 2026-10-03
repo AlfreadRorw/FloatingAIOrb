@@ -22,7 +22,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import com.alfread.alfdownloader.AppController
+import com.alfread.alfdownloader.overlay.OverlayController
 
 @Composable
 fun SettingsScreen(c: AppController, bottomPad: Dp) {
@@ -124,6 +128,44 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                 SwitchRow(Icons.Rounded.Download, "Lencana unduhan aktif", "Tampilkan jumlah unduhan berjalan di ikon Unduh", p.dockBadge) { v -> c.update { it.copy(dockBadge = v) } }
                 RowDivider()
                 SwitchRow(Icons.Rounded.Vibration, "Getar halus", "Umpan balik haptik saat berpindah tab", p.haptics) { v -> c.update { it.copy(haptics = v) } }
+            }
+        }
+
+        // ---------------- floating bubble
+        item { SectionTitle("Jendela mengambang", Modifier.padding(top = 8.dp)) }
+        item {
+            val context = LocalContext.current
+            val overlayLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                if (OverlayController.canDrawOverlays(context)) {
+                    c.update { it.copy(floatingEnabled = true) }
+                    OverlayController.start(context)
+                } else {
+                    c.toast("Izin \"Tampil di atas aplikasi lain\" belum diberikan")
+                }
+            }
+            Panel(Modifier.fillMaxWidth()) {
+                SwitchRow(
+                    Icons.Rounded.Bolt, "Bubble mengambang",
+                    "Pantau & unduh dari bubble kecil di atas aplikasi lain", p.floatingEnabled
+                ) { v ->
+                    if (v) {
+                        if (OverlayController.canDrawOverlays(context)) {
+                            c.update { it.copy(floatingEnabled = true) }
+                            OverlayController.start(context)
+                        } else {
+                            overlayLauncher.launch(OverlayController.permissionIntent(context))
+                        }
+                    } else {
+                        c.update { it.copy(floatingEnabled = false) }
+                        OverlayController.stop(context)
+                    }
+                }
+                RowDivider()
+                Text(
+                    "Butuh izin \"Tampil di atas aplikasi lain\" sekali saja — bukan dari Shizuku, karena izin ini memang bisa diberikan langsung lewat Pengaturan Android.",
+                    color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp,
+                    modifier = Modifier.padding(16.dp)
+                )
             }
         }
 
