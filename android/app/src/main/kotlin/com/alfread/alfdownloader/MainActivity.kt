@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.alfread.alfdownloader.model.isActive
 import com.alfread.alfdownloader.notify.Notifier
 import com.alfread.alfdownloader.ui.*
 
