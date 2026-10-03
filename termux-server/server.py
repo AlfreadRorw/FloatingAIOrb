@@ -1,125 +1,414 @@
-#!/usr/bin/env python3
-import argparse, json, os, re, signal, subprocess, threading, time, uuid
+import json
+import os
+import re
+import shutil
+import subprocess
+import threading
+import time
+import uuid
 from pathlib import Path
+
 from flask import Flask, jsonify, request
 
-VERSION="1.1.0"
-DOWNLOAD_DIR=Path("/storage/emulated/0/Download/ALF Downloader")
-DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app=Flask(__name__)
-jobs={}
-lock=threading.Lock()
+HOST = "127.0.0.1"
+PORT = 8080
+VERSION = "1.0.0"
 
-def ts(): return int(time.time())
-def valid_url(u): return bool(re.match(r"^https?://", u or "", re.I))
-def update(j, **kw):
-    with lock:
-        if j in jobs: jobs[j].update(kw)
+DOWNLOAD_DIR = Path("/storage/emulated/0/Download/ALF Downloader")
+DATA_DIR = Path.home() / ".alf-downloader"
+HISTORY_FILE = DATA_DIR / "history.json"
 
-def progress(line):
-    m=re.search(r"\[download\]\s+(\d+(?:\.\d+)?)%", line)
-    return float(m.group(1)) if m else None
+app = Flask(__name__)
+jobs = {}
+jobs_lock = threading.Lock()
 
-def worker(jid,url,quality):
-    update(jid,status="downloading",started_at=ts())
-    output=str(DOWNLOAD_DIR/"%(title).160B [%(id)s].%(ext)s")
-    if quality=="audio":
-        fmt="bestaudio/best"; extra=["-x","--audio-format","mp3","--audio-quality","0"]
-    elif quality=="720p":
-        fmt="bestvideo[height<=720]+bestaudio/best[height<=720]"; extra=[]
-    elif quality=="480p":
-        fmt="bestvideo[height<=480]+bestaudio/best[height<=480]"; extra=[]
-    else:
-        fmt="bestvideo+bestaudio/best"; extra=[]
-    cmd=["yt-dlp","--newline","--no-playlist","--restrict-filenames",
-         "--merge-output-format","mp4","-f",fmt,"-o",output,*extra,url]
+
+def ensure_dirs():
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if not HISTORY_FILE.exists():
+        HISTORY_FILE.write_text("[]", encoding="utf-8")
+
+
+def command_exists(name):
+    return shutil.which(name) is not None
+
+
+def load_history():
+    ensure_dirs()
     try:
-        p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
-                           text=True,bufsize=1)
-        update(jid,pid=p.pid)
-        for line in p.stdout:
-            line=line.rstrip()
-            pct=progress(line)
-            if pct is not None: update(jid,progress=pct)
-            if "Destination:" in line or "Merging formats" in line:
-                update(jid,message=line)
-            with lock: cancel=jobs.get(jid,{}).get("cancel_requested",False)
-            if cancel:
-                try: p.terminate()
-                except Exception: pass
-        code=p.wait()
-        with lock: cancel=jobs.get(jid,{}).get("cancel_requested",False)
-        if cancel: update(jid,status="cancelled",finished_at=ts(),progress=0)
-        elif code==0: update(jid,status="completed",finished_at=ts(),progress=100)
-        else: update(jid,status="error",finished_at=ts(),error=f"yt-dlp exited with code {code}")
-    except FileNotFoundError:
-        update(jid,status="error",finished_at=ts(),error="yt-dlp tidak ditemukan. Jalankan install.sh.")
-    except Exception as e:
-        update(jid,status="error",finished_at=ts(),error=str(e))
+        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def save_history(items):
+    ensure_dirs()
+    HISTORY_FILE.write_text(
+        json.dumps(items[:200], ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+
+def add_history(item):
+    history = load_history()
+    history.insert(0, item)
+    save_history(history)
+
+
+def clean_title(value):
+    value = value or "download"
+    value = re.sub(r'[\\/:*?"<>|]+', "_", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value[:180] or "download"
+
+
+def get_ytdlp_command():
+    if command_exists("yt-dlp"):
+        return ["yt-dlp"]
+    return ["python", "-m", "yt_dlp"]
+
+
+def validate_url(url):
+    if not isinstance(url, str):
+        return False
+    url = url.strip()
+    return url.startswith("http://") or url.startswith("https://")
+
+
+def run_json_command(args, timeout=120):
+    result = subprocess.run(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip()[-2500:] or "yt-dlp failed")
+    return json.loads(result.stdout)
+
+
+def quality_format(quality):
+    if quality == "audio":
+        return {
+            "format": "bestaudio/best",
+            "post": ["-x", "--audio-format", "mp3", "--audio-quality", "0"],
+        }
+
+    if quality == "best":
+        return {
+            "format": "bv*+ba/b",
+            "post": [],
+        }
+
+    if quality in {"1080p", "720p", "480p"}:
+        height = quality[:-1]
+        return {
+            "format": (
+                f"bv*[height<={height}]+ba/"
+                f"b[height<={height}]/"
+                f"b"
+            ),
+            "post": [],
+        }
+
+    raise ValueError("Unsupported quality")
+
+
+def percent_from_line(line):
+    match = re.search(r"(\d+(?:\.\d+)?)%", line)
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def update_job(job_id, **values):
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id].update(values)
+
+
+def download_worker(job_id, url, quality):
+    started = time.time()
+
+    try:
+        spec = quality_format(quality)
+
+        update_job(
+            job_id,
+            status="downloading",
+            progress=0.0,
+            message="Starting yt-dlp...",
+        )
+
+        output_template = str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
+
+        cmd = (
+            get_ytdlp_command()
+            + [
+                "--newline",
+                "--no-playlist",
+                "--restrict-filenames",
+                "--progress",
+                "--progress-template",
+                "%(progress._percent_str)s|%(progress.eta)s|%(progress.speed)s|%(filename)s",
+                "-f",
+                spec["format"],
+                "-o",
+                output_template,
+                url,
+            ]
+            + spec["post"]
+        )
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        output_lines = []
+        last_filename = None
+
+        for raw in process.stdout:
+            line = raw.strip()
+            if not line:
+                continue
+
+            output_lines.append(line)
+            if len(output_lines) > 80:
+                output_lines.pop(0)
+
+            parts = line.split("|", 3)
+            if len(parts) == 4:
+                pct = percent_from_line(parts[0])
+                if pct is not None:
+                    update_job(
+                        job_id,
+                        progress=max(0.0, min(100.0, pct)),
+                        eta=parts[1],
+                        speed=parts[2],
+                        filename=parts[3],
+                        message="Downloading...",
+                    )
+                    last_filename = parts[3]
+            elif "has already been downloaded" in line:
+                update_job(job_id, progress=100.0, message="Already downloaded")
+
+        return_code = process.wait()
+
+        if return_code != 0:
+            raise RuntimeError("\n".join(output_lines[-15:])[-4000:])
+
+        final_file = None
+        if last_filename:
+            candidate = DOWNLOAD_DIR / last_filename
+            if candidate.exists():
+                final_file = candidate
+
+        if final_file is None:
+            files = [
+                p for p in DOWNLOAD_DIR.iterdir()
+                if p.is_file()
+            ]
+            if files:
+                final_file = max(files, key=lambda p: p.stat().st_mtime)
+
+        elapsed = round(time.time() - started, 2)
+
+        item = {
+            "id": job_id,
+            "url": url,
+            "quality": quality,
+            "status": "completed",
+            "filename": final_file.name if final_file else "downloaded file",
+            "path": str(final_file) if final_file else str(DOWNLOAD_DIR),
+            "completed_at": int(time.time()),
+            "duration_seconds": elapsed,
+        }
+
+        update_job(
+            job_id,
+            status="completed",
+            progress=100.0,
+            message="Download complete",
+            filename=item["filename"],
+        )
+        add_history(item)
+
+    except Exception as exc:
+        message = str(exc) or "Unknown download error"
+        update_job(
+            job_id,
+            status="error",
+            progress=0.0,
+            message=message[-4000:],
+        )
+        add_history({
+            "id": job_id,
+            "url": url,
+            "quality": quality,
+            "status": "error",
+            "error": message[-4000:],
+            "completed_at": int(time.time()),
+        })
+
 
 @app.get("/api/health")
 def health():
-    return jsonify(ok=True,service="ALF Downloader Server",version=VERSION,
-                   download_directory=str(DOWNLOAD_DIR))
+    return jsonify({
+        "ok": True,
+        "service": "ALF Downloader",
+        "version": VERSION,
+        "host": HOST,
+        "port": PORT,
+        "download_dir": str(DOWNLOAD_DIR),
+        "yt_dlp": command_exists("yt-dlp") or command_exists("python"),
+        "ffmpeg": command_exists("ffmpeg"),
+    })
 
-@app.get("/api/info")
+
+@app.post("/api/info")
 def info():
-    url=request.args.get("url","").strip()
-    if not valid_url(url): return jsonify(ok=False,error="URL tidak valid"),400
+    data = request.get_json(silent=True) or {}
+    url = data.get("url", "").strip()
+
+    if not validate_url(url):
+        return jsonify({"ok": False, "error": "Invalid URL"}), 400
+
     try:
-        r=subprocess.run(["yt-dlp","--dump-single-json","--no-playlist","--skip-download",url],
-                         capture_output=True,text=True,timeout=45)
-        if r.returncode: return jsonify(ok=False,error=r.stderr.strip()[-1000:] or "Gagal mengambil info"),400
-        d=json.loads(r.stdout)
-        return jsonify(ok=True,id=d.get("id"),title=d.get("title"),uploader=d.get("uploader"),
-                       duration=d.get("duration"),thumbnail=d.get("thumbnail"),
-                       webpage_url=d.get("webpage_url"),extractor=d.get("extractor_key"),
-                       width=d.get("width"),height=d.get("height"))
-    except subprocess.TimeoutExpired: return jsonify(ok=False,error="Timeout mengambil info"),504
-    except FileNotFoundError: return jsonify(ok=False,error="yt-dlp belum terpasang"),500
-    except Exception as e: return jsonify(ok=False,error=str(e)),500
+        cmd = get_ytdlp_command() + [
+            "--dump-single-json",
+            "--skip-download",
+            "--no-playlist",
+            "--no-warnings",
+            url,
+        ]
+        meta = run_json_command(cmd, timeout=120)
+
+        formats = []
+        seen = set()
+
+        for fmt in meta.get("formats", []):
+            height = fmt.get("height")
+            ext = fmt.get("ext")
+            if not height or not ext:
+                continue
+            if height not in seen:
+                seen.add(height)
+                formats.append({
+                    "height": height,
+                    "ext": ext,
+                })
+
+        formats.sort(key=lambda x: x["height"], reverse=True)
+
+        return jsonify({
+            "ok": True,
+            "title": meta.get("title") or "Untitled",
+            "duration": meta.get("duration"),
+            "uploader": meta.get("uploader"),
+            "thumbnail": meta.get("thumbnail"),
+            "webpage_url": meta.get("webpage_url") or url,
+            "formats": formats[:30],
+        })
+
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": "Info lookup timed out"}), 504
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)[-4000:]}), 500
+
 
 @app.post("/api/download")
 def download():
-    b=request.get_json(silent=True) or {}
-    url=str(b.get("url","")).strip()
-    q=str(b.get("quality","best")).lower()
-    if not valid_url(url): return jsonify(ok=False,error="URL tidak valid"),400
-    if q not in {"best","720p","480p","audio"}: q="best"
-    jid=uuid.uuid4().hex[:12]
-    job={"id":jid,"url":url,"quality":q,"status":"queued","progress":0,
-         "message":"Menunggu proses...","created_at":ts(),"started_at":None,
-         "finished_at":None,"pid":None,"error":None,"cancel_requested":False}
-    with lock: jobs[jid]=job
-    threading.Thread(target=worker,args=(jid,url,q),daemon=True).start()
-    return jsonify(ok=True,job=job),202
+    data = request.get_json(silent=True) or {}
+    url = data.get("url", "").strip()
+    quality = data.get("quality", "best")
 
-@app.get("/api/jobs")
-def all_jobs():
-    with lock: data=list(jobs.values())
-    data.sort(key=lambda x:x.get("created_at",0),reverse=True)
-    return jsonify(ok=True,jobs=data[:50])
+    if not validate_url(url):
+        return jsonify({"ok": False, "error": "Invalid URL"}), 400
 
-@app.get("/api/jobs/<jid>")
-def get_job(jid):
-    with lock: job=jobs.get(jid)
-    if not job: return jsonify(ok=False,error="Job tidak ditemukan"),404
-    return jsonify(ok=True,job=job)
+    try:
+        quality_format(quality)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Unsupported quality"}), 400
 
-@app.post("/api/jobs/<jid>/cancel")
-def cancel(jid):
-    with lock:
-        job=jobs.get(jid)
-        if not job: return jsonify(ok=False,error="Job tidak ditemukan"),404
-        job["cancel_requested"]=True
-        pid=job.get("pid")
-    if pid:
-        try: os.kill(pid,signal.SIGTERM)
-        except Exception: pass
-    return jsonify(ok=True,message="Cancel diminta")
+    ensure_dirs()
 
-if __name__=="__main__":
-    p=argparse.ArgumentParser()
-    p.add_argument("--host",default="127.0.0.1"); p.add_argument("--port",type=int,default=8080)
-    a=p.parse_args()
-    app.run(host=a.host,port=a.port,debug=False,threaded=True)
+    job_id = uuid.uuid4().hex[:12]
+
+    with jobs_lock:
+        jobs[job_id] = {
+            "id": job_id,
+            "url": url,
+            "quality": quality,
+            "status": "queued",
+            "progress": 0.0,
+            "message": "Queued",
+            "created_at": int(time.time()),
+        }
+
+    thread = threading.Thread(
+        target=download_worker,
+        args=(job_id, url, quality),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({
+        "ok": True,
+        "job_id": job_id,
+        "status": "queued",
+    }), 202
+
+
+@app.get("/api/jobs/<job_id>")
+def job_status(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+    if not job:
+        return jsonify({
+            "ok": False,
+            "error": "Job not found",
+        }), 404
+
+    return jsonify({
+        "ok": True,
+        "job": job,
+    })
+
+
+@app.get("/api/history")
+def history():
+    return jsonify({
+        "ok": True,
+        "items": load_history(),
+    })
+
+
+@app.post("/api/history/clear")
+def clear_history():
+    save_history([])
+    return jsonify({"ok": True})
+
+
+if __name__ == "__main__":
+    ensure_dirs()
+
+    print(f"ALF Downloader Server {VERSION}")
+    print(f"Serving on http://{HOST}:{PORT}")
+    print(f"Download directory: {DOWNLOAD_DIR}")
+
+    app.run(
+        host=HOST,
+        port=PORT,
+        debug=False,
+        threaded=True,
+    )
