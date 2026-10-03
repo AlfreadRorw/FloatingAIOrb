@@ -1,209 +1,29 @@
-# ALF Downloader
-
-ALF Downloader is an Android client + Termux local server for downloading content that you are authorized to save.
-
-## Architecture
-
-Android app
--> HTTP localhost `127.0.0.1:8080`
--> Flask server in Termux
--> yt-dlp + FFmpeg
--> `/storage/emulated/0/Download/ALF Downloader`
-
-The server binds only to `127.0.0.1`.
-
-## Requirements
-
-- Android 7.0+ (API 24)
-- Android Studio with JDK 17
-- Termux from a source that supports external-app commands
-- Python 3
-- FFmpeg
-- yt-dlp
-- Termux shared-storage permission
-
-## 1. Termux setup
-
-Open Termux and run:
-
-```bash
-termux-setup-storage
-pkg update
-pkg install python ffmpeg
-```
-
-Install yt-dlp using the package available in your Termux repository:
-
-```bash
-pkg search yt-dlp
-```
-
-If `yt-dlp` is available:
-
-```bash
-pkg install yt-dlp
-```
-
-If your repository does not provide it, use a normal Python package install without upgrading Termux's pip:
-
-```bash
-python -m pip install yt-dlp
-```
-
-Do NOT run `python -m pip install --upgrade pip` in Termux.
-
-Then:
-
-```bash
-cd ~/Github
-mkdir -p termux-server
-```
-
-Copy the `termux-server` folder from this project to:
-
-```text
-~/Github/termux-server
-```
-
-Start it manually once:
-
-```bash
-cd ~/Github/termux-server
-bash start.sh
-```
-
-Test:
-
-```bash
-curl http://127.0.0.1:8080/api/health
-```
-
-Expected:
-
-```json
-{"ok":true,"service":"ALF Downloader","version":"1.0.0"}
-```
-
-## 2. Optional automatic server start from Android
-
-The app includes a "Start Termux Server" button.
-
-The Termux side must allow external apps. In Termux:
-
-```bash
-mkdir -p ~/.termux
-nano ~/.termux/termux.properties
-```
-
-Add:
-
-```text
-allow-external-apps=true
-```
-
-Restart Termux after changing this setting.
-
-The Android app uses:
-
-```text
-com.termux.RUN_COMMAND
-```
-
-and starts:
-
-```text
-/data/data/com.termux/files/home/Github/termux-server/start.sh
-```
-
-If your server is stored elsewhere, change `SERVER_SCRIPT` in:
-
-```text
-android/app/src/main/java/com/alfread/alfdownloader/MainActivity.kt
-```
-
-## 3. Build with GitHub Actions
-
-Push the project to GitHub.
-
-The workflow is:
-
-```text
-.github/workflows/build.yml
-```
-
-It installs JDK 17, Gradle 8.9 and builds:
-
-```text
-android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-The APK is uploaded as a workflow artifact.
-
-## 4. Android app
-
-The app provides:
-
-- Server status
-- Start Termux server
-- URL input
-- Metadata/info lookup
-- Quality selection
-- Download
-- Download progress
-- Download history
-- Settings
-- Localhost cleartext networking
-- Termux RUN_COMMAND integration
-
-## 5. API
-
-### Health
-
-```http
-GET /api/health
-```
-
-### Video info
-
-```http
-POST /api/info
-Content-Type: application/json
-
-{"url":"https://example.com/video"}
-```
-
-### Start download
-
-```http
-POST /api/download
-Content-Type: application/json
-
-{
-  "url":"https://example.com/video",
-  "quality":"720p"
-}
-```
-
-Quality values:
-
-- `best`
-- `1080p`
-- `720p`
-- `480p`
-- `audio`
-
-### Job status
-
-```http
-GET /api/jobs/<job_id>
-```
-
-### History
-
-```http
-GET /api/history
-```
-
-## Content authorization
-
-Use this project only for content you are allowed to download. It does not implement DRM bypass, private-account access, authentication bypass, paywall bypass, or other access-control circumvention.
+# ALF Downloader 1.1
+
+Aplikasi Android (Jetpack Compose) + server lokal Termux (Flask + yt-dlp) untuk mengunduh media dari sumber yang
+didukung yt-dlp, khusus untuk konten yang memang boleh Anda unduh. Tidak melewati DRM, paywall, atau login.
+
+## Perbaikan penting
+- **Error "Cleartext HTTP traffic to 127.0.0.1 not permitted"** diperbaiki lewat `res/xml/network_security_config.xml`
+  yang dipasang di `AndroidManifest.xml`.
+- Peluncur server Termux memakai path absolut, mencari folder server otomatis, dan meminta izin RUN_COMMAND.
+- Model data server memakai angka untuk kecepatan/ETA (sebelumnya bisa membuat parsing gagal).
+- Server memakai `waitress` (tanpa peringatan "development server").
+
+## Fitur
+- UI gelap elegan, ikon di mana-mana, logo yang digambar langsung, 6 warna aksen
+- **Dock bar** yang bisa diatur: gaya (melayang / menempel), label, ukuran ikon, kepekatan, lencana, getar
+- Otomatis: nyalakan server, tempel link dari clipboard, ambil info, unduh dari menu Bagikan, kosongkan kolom, notifikasi
+- Info video dengan sampul, durasi, tayangan; kualitas Terbaik/4K/1080/720/480/360/Audio (MP3/M4A/Opus)
+- Sematkan sampul & metadata, subtitle, playlist, batas kecepatan, 1-4 unduhan bersamaan
+- Antrean dengan kecepatan, ETA, progres playlist; batal / coba lagi
+- Pustaka dengan pencarian, filter, unduh ulang, salin & bagikan link, buka folder
+- Server menyimpan riwayat, memindai media agar muncul di Galeri/Musik
+
+## Setup Termux
+1. `termux-setup-storage`
+2. Di folder `termux-server`: `bash install.sh` (juga mengaktifkan `allow-external-apps=true`)
+3. Buka aplikasi dan izinkan "Run commands in Termux environment".
+4. Bagikan link dari TikTok/YouTube ke ALF untuk unduh instan.
+
+Build APK: GitHub Actions `Build ALF Downloader APK` (minSdk 26).

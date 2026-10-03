@@ -1,26 +1,11 @@
 ALF DOWNLOADER - TERMUX SETUP
 
-1) In Termux:
-termux-setup-storage
+1) termux-setup-storage
+2) cd ke folder termux-server ini, lalu:  bash install.sh
+   (install.sh sudah mengaktifkan allow-external-apps=true)
+3) Restart Termux sekali.
+4) Buka ALF Downloader dan izinkan "Run commands in Termux environment".
+5) Server menyala otomatis. Manual: bash ~/alf-downloader-server/start.sh
 
-2) If this project is extracted in Downloads, enter the server folder. Example:
-cd ~/storage/downloads/ALFDownloader/termux-server
-
-3) Install the server:
-bash install.sh
-
-4) Allow third-party app commands:
-mkdir -p ~/.termux
-printf "allow-external-apps=true\n" >> ~/.termux/termux.properties
-
-5) Restart Termux once.
-
-6) Android Settings -> Apps -> ALF Downloader -> Permissions / Additional permissions -> allow "Run commands in Termux environment".
-
-7) Open ALF Downloader. The app will attempt to start the local server automatically.
-
-Manual test:
-bash ~/alf-downloader-server/start.sh
-
-Expected endpoint:
-http://127.0.0.1:8080/api/health
+Tes: curl http://127.0.0.1:8080/api/health
+Log server (jika dijalankan dari aplikasi): ~/.alf-server.log
