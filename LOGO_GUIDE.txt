@@ -1,0 +1,26 @@
+ALF DOWNLOADER LOGO GUIDE
+
+Main app logo
+- PNG 1024x1024
+- Transparent background
+- Monochrome black/white
+- Keep the main mark inside the central 72% safe area
+
+Adaptive foreground
+- PNG 432x432
+- Transparent background
+- Keep important details inside roughly 66% center safe area
+
+Dock icons if you replace the built-in Material icons
+- 96x96 PNG
+- Transparent background
+- Download: downward arrow / tray
+- History: circular arrow / clock-like history mark
+- Settings: simple gear
+
+Recommended visual direction
+- Pure black #000000
+- Pure white #FFFFFF
+- Optional gray #9E9E9E
+- No gradients
+- No emoji
