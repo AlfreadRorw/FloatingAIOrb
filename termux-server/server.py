@@ -1,197 +1,125 @@
-#!/data/data/com.termux/files/usr/bin/python
-from __future__ import annotations
-
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+#!/usr/bin/env python3
+import argparse, json, os, re, signal, subprocess, threading, time, uuid
 from pathlib import Path
-from threading import Lock, Event
-import re
-import shutil
-import uuid
-
 from flask import Flask, jsonify, request
-import yt_dlp
 
-APP_VERSION = "1.0.0"
-HOST = "127.0.0.1"
-PORT = 8080
-DOWNLOAD_DIR = Path("/storage/emulated/0/Download/ALF Downloader")
+VERSION="1.1.0"
+DOWNLOAD_DIR=Path("/storage/emulated/0/Download/ALF Downloader")
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app=Flask(__name__)
+jobs={}
+lock=threading.Lock()
 
-app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=2)
-lock = Lock()
-jobs: dict[str, dict] = {}
-cancel_events: dict[str, Event] = {}
-
-QUALITY_FORMATS = {
-    "best": "bv*+ba/b",
-    "1080": "bv*[height<=1080]+ba/b[height<=1080]",
-    "720": "bv*[height<=720]+ba/b[height<=720]",
-    "480": "bv*[height<=480]+ba/b[height<=480]",
-    "360": "bv*[height<=360]+ba/b[height<=360]",
-    "audio": "ba/b",
-}
-
-def now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-def safe_url(value: str) -> str:
-    value = value.strip()
-    if not re.match(r"^https?://", value, re.I):
-        raise ValueError("URL harus dimulai dengan http:// atau https://")
-    if len(value) > 4096:
-        raise ValueError("URL terlalu panjang")
-    return value
-
-def clean_filename(path: Path) -> str:
-    try:
-        rel = path.relative_to(DOWNLOAD_DIR)
-        return str(rel)
-    except ValueError:
-        return path.name
-
-def set_job(job_id: str, **updates) -> None:
+def ts(): return int(time.time())
+def valid_url(u): return bool(re.match(r"^https?://", u or "", re.I))
+def update(j, **kw):
     with lock:
-        if job_id in jobs:
-            jobs[job_id].update(updates)
+        if j in jobs: jobs[j].update(kw)
 
-def progress_hook(job_id: str, event: dict) -> None:
-    if cancel_events[job_id].is_set():
-        raise yt_dlp.utils.DownloadCancelled()
-    status = event.get("status")
-    if status == "downloading":
-        total = event.get("total_bytes") or event.get("total_bytes_estimate") or 0
-        downloaded = event.get("downloaded_bytes") or 0
-        pct = (downloaded / total * 100) if total else 0
-        set_job(
-            job_id,
-            status="downloading",
-            progress=max(0.0, min(100.0, pct)),
-            downloadedBytes=int(downloaded),
-            totalBytes=int(total),
-            speed=event.get("_speed_str") or event.get("speed_str"),
-            eta=event.get("_eta_str") or event.get("eta"),
-            filename=event.get("filename"),
-        )
-    elif status == "finished":
-        set_job(job_id, status="processing", progress=99.0, filename=event.get("filename"))
+def progress(line):
+    m=re.search(r"\[download\]\s+(\d+(?:\.\d+)?)%", line)
+    return float(m.group(1)) if m else None
 
-def build_opts(job_id: str, url: str, quality: str) -> dict:
-    fmt = QUALITY_FORMATS.get(quality, QUALITY_FORMATS["best"])
-    outtmpl = str(DOWNLOAD_DIR / "%(title).180s [%(id)s].%(ext)s")
-    opts = {
-        "format": fmt,
-        "outtmpl": outtmpl,
-        "paths": {"home": str(DOWNLOAD_DIR)},
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "restrictfilenames": False,
-        "windowsfilenames": True,
-        "progress_hooks": [lambda d: progress_hook(job_id, d)],
-        "continuedl": True,
-        "retries": 3,
-        "fragment_retries": 3,
-        "concurrent_fragment_downloads": 4,
-        "socket_timeout": 20,
-        "js_runtimes": ["node"],
-    }
-    if quality != "audio":
-        opts["merge_output_format"] = "mp4"
-    return opts
-
-def run_job(job_id: str, url: str, quality: str) -> None:
-    set_job(job_id, status="starting")
+def worker(jid,url,quality):
+    update(jid,status="downloading",started_at=ts())
+    output=str(DOWNLOAD_DIR/"%(title).160B [%(id)s].%(ext)s")
+    if quality=="audio":
+        fmt="bestaudio/best"; extra=["-x","--audio-format","mp3","--audio-quality","0"]
+    elif quality=="720p":
+        fmt="bestvideo[height<=720]+bestaudio/best[height<=720]"; extra=[]
+    elif quality=="480p":
+        fmt="bestvideo[height<=480]+bestaudio/best[height<=480]"; extra=[]
+    else:
+        fmt="bestvideo+bestaudio/best"; extra=[]
+    cmd=["yt-dlp","--newline","--no-playlist","--restrict-filenames",
+         "--merge-output-format","mp4","-f",fmt,"-o",output,*extra,url]
     try:
-        opts = build_opts(job_id, url, quality)
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get("title") or "Untitled"
-            requested = info.get("requested_downloads") or []
-            filename = None
-            if requested:
-                filename = requested[0].get("filepath") or requested[0].get("_filename")
-            if not filename:
-                filename = ydl.prepare_filename(info)
-            p = Path(filename)
-            if p.exists():
-                filename = clean_filename(p)
-            else:
-                filename = p.name
-            set_job(job_id, status="completed", progress=100.0, title=title, filename=filename, eta=None)
-    except yt_dlp.utils.DownloadCancelled:
-        set_job(job_id, status="cancelled", error="Cancelled")
-    except Exception as exc:
-        set_job(job_id, status="error", error=str(exc)[:1000])
+        p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                           text=True,bufsize=1)
+        update(jid,pid=p.pid)
+        for line in p.stdout:
+            line=line.rstrip()
+            pct=progress(line)
+            if pct is not None: update(jid,progress=pct)
+            if "Destination:" in line or "Merging formats" in line:
+                update(jid,message=line)
+            with lock: cancel=jobs.get(jid,{}).get("cancel_requested",False)
+            if cancel:
+                try: p.terminate()
+                except Exception: pass
+        code=p.wait()
+        with lock: cancel=jobs.get(jid,{}).get("cancel_requested",False)
+        if cancel: update(jid,status="cancelled",finished_at=ts(),progress=0)
+        elif code==0: update(jid,status="completed",finished_at=ts(),progress=100)
+        else: update(jid,status="error",finished_at=ts(),error=f"yt-dlp exited with code {code}")
+    except FileNotFoundError:
+        update(jid,status="error",finished_at=ts(),error="yt-dlp tidak ditemukan. Jalankan install.sh.")
+    except Exception as e:
+        update(jid,status="error",finished_at=ts(),error=str(e))
 
 @app.get("/api/health")
 def health():
-    return jsonify({"ok": True, "service": "ALF Downloader Termux Server", "version": APP_VERSION})
+    return jsonify(ok=True,service="ALF Downloader Server",version=VERSION,
+                   download_directory=str(DOWNLOAD_DIR))
 
 @app.get("/api/info")
 def info():
+    url=request.args.get("url","").strip()
+    if not valid_url(url): return jsonify(ok=False,error="URL tidak valid"),400
     try:
-        url = safe_url(request.args.get("url", ""))
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True, "js_runtimes": ["node"]}) as ydl:
-            data = ydl.extract_info(url, download=False)
-        return jsonify({
-            "id": data.get("id", ""),
-            "title": data.get("title", ""),
-            "uploader": data.get("uploader", ""),
-            "duration": data.get("duration"),
-            "thumbnail": data.get("thumbnail"),
-            "webpageUrl": data.get("webpage_url", url),
-        })
-    except Exception as exc:
-        return jsonify({"error": str(exc)[:1000]}), 400
+        r=subprocess.run(["yt-dlp","--dump-single-json","--no-playlist","--skip-download",url],
+                         capture_output=True,text=True,timeout=45)
+        if r.returncode: return jsonify(ok=False,error=r.stderr.strip()[-1000:] or "Gagal mengambil info"),400
+        d=json.loads(r.stdout)
+        return jsonify(ok=True,id=d.get("id"),title=d.get("title"),uploader=d.get("uploader"),
+                       duration=d.get("duration"),thumbnail=d.get("thumbnail"),
+                       webpage_url=d.get("webpage_url"),extractor=d.get("extractor_key"),
+                       width=d.get("width"),height=d.get("height"))
+    except subprocess.TimeoutExpired: return jsonify(ok=False,error="Timeout mengambil info"),504
+    except FileNotFoundError: return jsonify(ok=False,error="yt-dlp belum terpasang"),500
+    except Exception as e: return jsonify(ok=False,error=str(e)),500
 
-@app.post("/api/jobs")
-def create_job():
-    try:
-        data = request.get_json(silent=True) or {}
-        url = safe_url(str(data.get("url", "")))
-        quality = str(data.get("quality", "best"))
-        if quality not in QUALITY_FORMATS:
-            quality = "best"
-        job_id = uuid.uuid4().hex[:12]
-        with lock:
-            jobs[job_id] = {
-                "id": job_id, "url": url, "title": None, "status": "queued",
-                "progress": 0.0, "downloadedBytes": 0, "totalBytes": 0,
-                "speed": None, "eta": None, "filename": None, "error": None,
-                "createdAt": now(),
-            }
-            cancel_events[job_id] = Event()
-        executor.submit(run_job, job_id, url, quality)
-        return jsonify({"id": job_id}), 202
-    except Exception as exc:
-        return jsonify({"error": str(exc)[:1000]}), 400
+@app.post("/api/download")
+def download():
+    b=request.get_json(silent=True) or {}
+    url=str(b.get("url","")).strip()
+    q=str(b.get("quality","best")).lower()
+    if not valid_url(url): return jsonify(ok=False,error="URL tidak valid"),400
+    if q not in {"best","720p","480p","audio"}: q="best"
+    jid=uuid.uuid4().hex[:12]
+    job={"id":jid,"url":url,"quality":q,"status":"queued","progress":0,
+         "message":"Menunggu proses...","created_at":ts(),"started_at":None,
+         "finished_at":None,"pid":None,"error":None,"cancel_requested":False}
+    with lock: jobs[jid]=job
+    threading.Thread(target=worker,args=(jid,url,q),daemon=True).start()
+    return jsonify(ok=True,job=job),202
 
 @app.get("/api/jobs")
-def list_jobs():
+def all_jobs():
+    with lock: data=list(jobs.values())
+    data.sort(key=lambda x:x.get("created_at",0),reverse=True)
+    return jsonify(ok=True,jobs=data[:50])
+
+@app.get("/api/jobs/<jid>")
+def get_job(jid):
+    with lock: job=jobs.get(jid)
+    if not job: return jsonify(ok=False,error="Job tidak ditemukan"),404
+    return jsonify(ok=True,job=job)
+
+@app.post("/api/jobs/<jid>/cancel")
+def cancel(jid):
     with lock:
-        return jsonify(list(jobs.values())[::-1])
+        job=jobs.get(jid)
+        if not job: return jsonify(ok=False,error="Job tidak ditemukan"),404
+        job["cancel_requested"]=True
+        pid=job.get("pid")
+    if pid:
+        try: os.kill(pid,signal.SIGTERM)
+        except Exception: pass
+    return jsonify(ok=True,message="Cancel diminta")
 
-@app.get("/api/jobs/<job_id>")
-def get_job(job_id: str):
-    with lock:
-        job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job tidak ditemukan"}), 404
-    return jsonify(job)
-
-@app.post("/api/jobs/<job_id>/cancel")
-def cancel(job_id: str):
-    event = cancel_events.get(job_id)
-    if not event:
-        return jsonify({"error": "Job tidak ditemukan"}), 404
-    event.set()
-    set_job(job_id, status="cancelling")
-    return jsonify({"ok": True})
-
-if __name__ == "__main__":
-    print(f"ALF Downloader Server {APP_VERSION}")
-    print(f"Serving on http://{HOST}:{PORT}")
-    print(f"Download directory: {DOWNLOAD_DIR}")
-    app.run(host=HOST, port=PORT, threaded=True)
+if __name__=="__main__":
+    p=argparse.ArgumentParser()
+    p.add_argument("--host",default="127.0.0.1"); p.add_argument("--port",type=int,default=8080)
+    a=p.parse_args()
+    app.run(host=a.host,port=a.port,debug=False,threaded=True)
