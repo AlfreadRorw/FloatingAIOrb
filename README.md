@@ -10,6 +10,13 @@ didukung yt-dlp, khusus untuk konten yang memang boleh Anda unduh. Tidak melewat
 - Model data server memakai angka untuk kecepatan/ETA (sebelumnya bisa membuat parsing gagal).
 - Server memakai `waitress` (tanpa peringatan "development server").
 
+## Baru di 1.2
+- Bar mengambang kini berbentuk garis tegak putih di tepi layar (bisa kiri/kanan), diseret naik-turun, ketuk untuk buka panel.
+- Panel bar: tempel+unduh cepat, progres unduhan, dan pintasan "Jendela kecil" (mini browser mengambang untuk TikTok/WhatsApp/YouTube/Instagram — bisa diseret & diubah ukurannya).
+- Integrasi Shizuku (opsional): membebaskan Termux & ALF dari pembatasan baterai, memberi izin overlay tanpa ke Pengaturan, dan percobaan membuka app asli dalam mode jendela bebas (freeform) — hasil freeform tergantung dukungan perangkat.
+- Widget layar utama (bisa diubah ukuran) + ubin Pengaturan Cepat untuk menyalakan server.
+- Tombol "Perbarui yt-dlp" di Pengaturan untuk mengatasi error "Unsupported URL" (biasanya postingan foto/slide TikTok yang butuh yt-dlp lebih baru).
+
 ## Fitur
 - UI gelap elegan, ikon di mana-mana, logo yang digambar langsung, 6 warna aksen
 - **Dock bar** yang bisa diatur: gaya (melayang / menempel), label, ukuran ikon, kepekatan, lencana, getar

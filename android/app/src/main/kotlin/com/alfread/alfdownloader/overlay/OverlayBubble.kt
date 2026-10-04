@@ -1,16 +1,13 @@
 package com.alfread.alfdownloader.overlay
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,9 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +30,7 @@ import com.alfread.alfdownloader.looksLikeUrl
 import com.alfread.alfdownloader.model.HealthResponse
 import com.alfread.alfdownloader.model.Job
 import com.alfread.alfdownloader.model.isActive
+import com.alfread.alfdownloader.ui.Chip
 import com.alfread.alfdownloader.ui.Ink
 import com.alfread.alfdownloader.ui.LocalAccent
 import com.alfread.alfdownloader.ui.formatClock
@@ -42,18 +38,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive as coroutineIsActive
 import kotlin.math.roundToInt
 
-private const val BUBBLE_SIZE = 58
-
+/** Bar tegak di tepi layar (kiri/kanan) yang bisa diseret naik-turun, ketuk untuk membuka panel. */
 @Composable
 fun OverlayBubble(
+    sideLeft: Boolean,
     pollHealth: suspend () -> HealthResponse?,
     pollJobs: suspend () -> List<Job>,
     onDownload: (String) -> Unit,
     onOpenApp: () -> Unit,
     onClose: () -> Unit,
-    onDrag: (Int, Int) -> Unit,
+    onDragY: (Int) -> Unit,
     onDragEnd: () -> Unit,
-    onExpandedChange: (Boolean) -> Unit
+    onExpandedChange: (Boolean) -> Unit,
+    onSwitchSide: () -> Unit,
+    onOpenShortcut: (AppShortcut) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var health by remember { mutableStateOf<HealthResponse?>(null) }
@@ -83,75 +81,65 @@ fun OverlayBubble(
     if (!expanded) {
         Box(
             Modifier
-                .size(BUBBLE_SIZE.dp)
+                .width(14.dp).height(112.dp)
                 .pointerInput(Unit) {
                     detectDragGestures(
-                        onDrag = { change, amount ->
-                            change.consume()
-                            onDrag(amount.x.roundToInt(), amount.y.roundToInt())
-                        },
+                        onDrag = { change, amount -> change.consume(); onDragY(amount.y.roundToInt()) },
                         onDragEnd = { onDragEnd() }
                     )
                 }
                 .clickable { setExpanded(true) },
             contentAlignment = Alignment.Center
         ) {
-            Canvas(Modifier.fillMaxSize()) {
-                drawCircle(color = Color(0xFF14141A), radius = size.minDimension / 2)
-                drawCircle(color = Ink.Line, radius = size.minDimension / 2, style = Stroke(width = 2f))
+            val barShape = RoundedCornerShape(50)
+            Box(
+                Modifier.width(7.dp).fillMaxHeight().clip(barShape)
+                    .background(Color.White.copy(alpha = if (online) 0.92f else 0.35f))
+            ) {
                 if (active.isNotEmpty()) {
-                    drawArc(
-                        color = accent, startAngle = -90f, sweepAngle = 360f * avgProgress.coerceIn(0f, 1f),
-                        useCenter = false, style = Stroke(width = 5f),
-                        topLeft = Offset(5f, 5f), size = androidx.compose.ui.geometry.Size(size.width - 10f, size.height - 10f)
+                    Box(
+                        Modifier.fillMaxWidth().fillMaxHeight(avgProgress.coerceIn(0.05f, 1f))
+                            .align(Alignment.BottomCenter).clip(barShape).background(accent)
                     )
                 }
             }
-            Icon(
-                if (active.isNotEmpty()) Icons.Rounded.Downloading else Icons.Rounded.Bolt,
-                null, tint = if (online) accent else Ink.Muted, modifier = Modifier.size(24.dp)
-            )
-            Box(
-                Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp).size(10.dp)
-                    .background(if (online) Ink.Success else Ink.Danger, CircleShape)
-                    .border(1.5.dp, Color(0xFF0A0A0C), CircleShape)
-            )
             if (active.size > 1) {
                 Box(
-                    Modifier.align(Alignment.BottomEnd).size(18.dp).background(accent, CircleShape),
+                    Modifier.align(Alignment.TopCenter).offset(y = (-6).dp).size(16.dp)
+                        .background(accent, CircleShape),
                     contentAlignment = Alignment.Center
-                ) { Text("${active.size}", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                ) { Text("${active.size}", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
             }
         }
         return
     }
 
     val shape = RoundedCornerShape(22.dp)
-    Column(
-        Modifier.width(260.dp).clip(shape).background(Color(0xFF0F0F12)).border(1.dp, Ink.Line, shape)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    Column(Modifier.width(264.dp).clip(shape).background(Color(0xFF0F0F12)).border(1.dp, Ink.Line, shape)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(9.dp).background(if (online) Ink.Success else Ink.Danger, CircleShape))
             Spacer(Modifier.width(8.dp))
             Text(
                 if (online) "ALF online" else "Server offline", color = Ink.Text,
                 fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f)
             )
+            Icon(
+                if (sideLeft) Icons.Rounded.ArrowForward else Icons.Rounded.ArrowBack, "Pindah sisi", tint = Ink.Muted,
+                modifier = Modifier.size(17.dp).clickable { onSwitchSide() }
+            )
+            Spacer(Modifier.width(10.dp))
             Icon(Icons.Rounded.OpenInNew, "Buka aplikasi", tint = Ink.Muted,
-                modifier = Modifier.size(18.dp).clickable { onOpenApp() })
+                modifier = Modifier.size(17.dp).clickable { onOpenApp() })
             Spacer(Modifier.width(10.dp))
             Icon(Icons.Rounded.UnfoldLess, "Kecilkan", tint = Ink.Muted,
-                modifier = Modifier.size(18.dp).clickable { setExpanded(false) })
+                modifier = Modifier.size(17.dp).clickable { setExpanded(false) })
             Spacer(Modifier.width(10.dp))
             Icon(Icons.Rounded.Close, "Tutup", tint = Ink.Danger,
-                modifier = Modifier.size(18.dp).clickable { onClose() })
+                modifier = Modifier.size(17.dp).clickable { onClose() })
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Ink.Line))
 
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(12.dp))
@@ -165,13 +153,10 @@ fun OverlayBubble(
                     )
                 }
                 Spacer(Modifier.width(8.dp))
-                MiniButton(Icons.Rounded.ContentPaste) {
-                    pasted = clipboard.getText()?.text.orEmpty()
-                }
+                MiniButton(Icons.Rounded.ContentPaste) { pasted = clipboard.getText()?.text.orEmpty() }
                 Spacer(Modifier.width(6.dp))
                 MiniButton(Icons.Rounded.Download, enabled = looksLikeUrl(pasted), filled = true) {
-                    onDownload(pasted.trim())
-                    pasted = ""
+                    onDownload(pasted.trim()); pasted = ""
                 }
             }
 
@@ -197,6 +182,11 @@ fun OverlayBubble(
                     }
                 }
                 if (active.size > 2) Text("+${active.size - 2} lainnya", color = Ink.Muted, fontSize = 11.sp)
+            }
+
+            Text("Jendela kecil", color = Ink.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MiniAppShortcuts.forEach { s -> Chip(s.label, false) { onOpenShortcut(s) } }
             }
         }
     }

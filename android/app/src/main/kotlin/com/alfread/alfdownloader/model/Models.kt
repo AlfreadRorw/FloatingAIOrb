@@ -99,6 +99,8 @@ data class Prefs(
     val floatingEnabled: Boolean = false,
     val bubbleX: Int = -1,
     val bubbleY: Int = -1,
+    val bubbleSide: Int = 1, // 0 kiri, 1 kanan
+    val useShizuku: Boolean = true,
     // tampilan
     val accent: Int = 0,
     // default unduhan

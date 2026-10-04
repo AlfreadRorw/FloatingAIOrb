@@ -94,6 +94,14 @@ class AppController(private val context: Context, private val scope: CoroutineSc
             .onFailure { toast(it.message ?: "Gagal menjalankan Termux") }
     }
 
+    fun updateYtdlp() {
+        scope.launch {
+            runCatching { api.updateYtdlp() }
+                .onSuccess { toast("Memperbarui yt-dlp di latar belakang…") }
+                .onFailure { toast("Gagal menghubungi server") }
+        }
+    }
+
     fun scopeCheck() {
         scope.launch { poll(); toast(if (online) "Server online" else (lastError ?: "Server offline").take(120)) }
     }

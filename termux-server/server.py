@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -57,6 +58,23 @@ AUDIO_FORMATS = {"mp3", "m4a", "opus"}
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def friendly_error(exc: Exception) -> str:
+    msg = re.sub(r"\x1b\[[0-9;]*m", "", str(exc))
+    low = msg.lower()
+    if "unsupported url" in low:
+        return (
+            "Jenis link ini belum didukung yt-dlp (contoh: posting foto/slide TikTok, bukan video). "
+            "Coba perbarui yt-dlp lewat Pengaturan > Server > \"Perbarui yt-dlp\", atau pakai link video biasa."
+        )
+    if "requested format is not available" in low:
+        return "Kualitas yang dipilih tidak tersedia untuk video ini. Coba pilih kualitas lain."
+    if "private video" in low or "login required" in low:
+        return "Video bersifat privat atau butuh login — tidak bisa diunduh tanpa akun."
+    if "video unavailable" in low or "has been removed" in low:
+        return "Video sudah tidak tersedia atau telah dihapus."
+    return msg[:600]
 
 
 def safe_url(value: str) -> str:
@@ -245,8 +263,7 @@ def run_job(job_id: str) -> None:
     except yt_dlp.utils.DownloadCancelled:
         set_job(job_id, status="cancelled", error="Dibatalkan", speedBps=0.0, etaSeconds=None, finishedAt=now())
     except Exception as exc:
-        msg = re.sub(r"\x1b\[[0-9;]*m", "", str(exc))
-        set_job(job_id, status="error", error=msg[:600], speedBps=0.0, etaSeconds=None, finishedAt=now())
+        set_job(job_id, status="error", error=friendly_error(exc), speedBps=0.0, etaSeconds=None, finishedAt=now())
     finally:
         save_history()
         schedule()
@@ -345,8 +362,7 @@ def info():
             "heights": heights, "isPlaylist": is_pl, "entryCount": len(entries),
         })
     except Exception as exc:
-        msg = re.sub(r"\x1b\[[0-9;]*m", "", str(exc))
-        return jsonify({"error": msg[:600]}), 400
+        return jsonify({"error": friendly_error(exc)}), 400
 
 
 @app.post("/api/jobs")
@@ -452,6 +468,20 @@ def api_config():
             return jsonify({"error": "maxConcurrent tidak valid"}), 400
         schedule()
     return jsonify(config)
+
+
+@app.post("/api/update")
+def update_ytdlp():
+    def worker() -> None:
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-U", "yt-dlp[default]"],
+                timeout=180, capture_output=True,
+            )
+        except Exception as exc:  # pragma: no cover
+            print("update failed:", exc)
+    Thread(target=worker, daemon=True).start()
+    return jsonify({"ok": True})
 
 
 @app.post("/api/shutdown")

@@ -81,6 +81,14 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                     }
                     GhostButton("Folder unduhan", Icons.Rounded.FolderOpen, Modifier.weight(1f)) { c.openFolder() }
                 }
+                RowDivider()
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GhostButton("Perbarui yt-dlp", Icons.Rounded.SystemUpdate, enabled = c.online) { c.updateYtdlp() }
+                    Text(
+                        "Jalankan ini kalau muncul \"Unsupported URL\" — biasanya berarti yt-dlp di Termux sudah usang.",
+                        color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp
+                    )
+                }
             }
         }
 
@@ -145,8 +153,8 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
             }
             Panel(Modifier.fillMaxWidth()) {
                 SwitchRow(
-                    Icons.Rounded.Bolt, "Bubble mengambang",
-                    "Pantau & unduh dari bubble kecil di atas aplikasi lain", p.floatingEnabled
+                    Icons.Rounded.Bolt, "Bar mengambang",
+                    "Garis tegak di tepi layar — geser naik/turun, ketuk untuk buka panel", p.floatingEnabled
                 ) { v ->
                     if (v) {
                         if (OverlayController.canDrawOverlays(context)) {
@@ -161,11 +169,64 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                     }
                 }
                 RowDivider()
+                Box(Modifier.padding(16.dp)) {
+                    OptionGroup("Posisi bar", listOf("Kiri", "Kanan"), p.bubbleSide) { i -> c.update { it.copy(bubbleSide = i) } }
+                }
+                RowDivider()
                 Text(
-                    "Butuh izin \"Tampil di atas aplikasi lain\" sekali saja — bukan dari Shizuku, karena izin ini memang bisa diberikan langsung lewat Pengaturan Android.",
+                    "Dari panel bar: tempel & unduh cepat, lihat progres, dan buka \"Jendela kecil\" — mini browser mengambang untuk TikTok/WhatsApp/YouTube/Instagram, bisa diseret & diubah ukurannya.",
                     color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp,
                     modifier = Modifier.padding(16.dp)
                 )
+            }
+        }
+
+        // ---------------- shizuku
+        item { SectionTitle("Shizuku", Modifier.padding(top = 8.dp)) }
+        item {
+            val context = LocalContext.current
+            var shizukuGranted by remember { mutableStateOf(com.alfread.alfdownloader.shizuku.ShizukuHelper.hasPermission()) }
+            val installed = com.alfread.alfdownloader.shizuku.ShizukuHelper.isInstalled(context)
+            val ready = com.alfread.alfdownloader.shizuku.ShizukuHelper.isReady()
+            Panel(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconTile(Icons.Rounded.Security, tint = if (shizukuGranted) Ink.Success else Ink.Muted)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            when {
+                                !installed -> "Shizuku tidak terpasang"
+                                !ready -> "Shizuku belum dijalankan"
+                                shizukuGranted -> "Terhubung & diizinkan"
+                                else -> "Terdeteksi, belum diizinkan"
+                            },
+                            color = Ink.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp
+                        )
+                        Text(
+                            "Dipakai untuk: bebas dari pembatasan baterai (Termux tidak mati sendiri), beri izin overlay tanpa buka Pengaturan, dan percobaan membuka app di jendela bebas.",
+                            color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp
+                        )
+                    }
+                }
+                RowDivider()
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GhostButton("Minta izin", Icons.Rounded.VerifiedUser, Modifier.weight(1f), enabled = ready && !shizukuGranted) {
+                        com.alfread.alfdownloader.shizuku.ShizukuHelper.requestPermission { granted ->
+                            shizukuGranted = granted
+                            c.toast(if (granted) "Shizuku diizinkan" else "Izin Shizuku ditolak")
+                        }
+                    }
+                    GhostButton("Bebaskan baterai", Icons.Rounded.BatteryChargingFull, Modifier.weight(1f), enabled = shizukuGranted) {
+                        val a = com.alfread.alfdownloader.shizuku.ShizukuHelper.whitelistBattery(context.packageName)
+                        val b = com.alfread.alfdownloader.shizuku.ShizukuHelper.whitelistBattery("com.termux")
+                        c.toast(if (a && b) "ALF & Termux dibebaskan dari pembatasan baterai" else "Sebagian gagal — coba cara manual juga")
+                    }
+                }
+                RowDivider()
+                SwitchRow(
+                    Icons.Rounded.AutoFixHigh, "Pakai Shizuku otomatis",
+                    "Saat bar mengambang menyala, coba bebaskan baterai Termux & ALF lewat Shizuku", p.useShizuku
+                ) { v -> c.update { it.copy(useShizuku = v) } }
             }
         }
 
