@@ -48,10 +48,17 @@ fun OverlayBubble(
     onOpenApp: () -> Unit,
     onClose: () -> Unit,
     onDragY: (Int) -> Unit,
+    onDragX: (Int) -> Unit,
     onDragEnd: () -> Unit,
     onExpandedChange: (Boolean) -> Unit,
     onSwitchSide: () -> Unit,
-    onOpenShortcut: (AppShortcut) -> Unit
+    onRefreshApps: () -> Unit,
+    onLaunchNative: (NativeApp) -> Unit,
+    apps: List<NativeApp>,
+    windowWidthDp: Int,
+    windowHeightDp: Int,
+    onWindowWidthChange: (Int) -> Unit,
+    onWindowHeightChange: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var health by remember { mutableStateOf<HealthResponse?>(null) }
@@ -81,10 +88,15 @@ fun OverlayBubble(
     if (!expanded) {
         Box(
             Modifier
-                .width(14.dp).height(112.dp)
+                .fillMaxHeight().widthIn(min = 4.dp).height(112.dp)
                 .pointerInput(Unit) {
                     detectDragGestures(
-                        onDrag = { change, amount -> change.consume(); onDragY(amount.y.roundToInt()) },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            val dx = amount.x.roundToInt()
+                            val dy = amount.y.roundToInt()
+                            if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.15f) onDragX(dx) else onDragY(dy)
+                        },
                         onDragEnd = { onDragEnd() }
                     )
                 }
@@ -93,7 +105,7 @@ fun OverlayBubble(
         ) {
             val barShape = RoundedCornerShape(50)
             Box(
-                Modifier.width(7.dp).fillMaxHeight().clip(barShape)
+                Modifier.fillMaxSize().clip(barShape)
                     .background(Color.White.copy(alpha = if (online) 0.92f else 0.35f))
             ) {
                 if (active.isNotEmpty()) {
@@ -184,10 +196,15 @@ fun OverlayBubble(
                 if (active.size > 2) Text("+${active.size - 2} lainnya", color = Ink.Muted, fontSize = 11.sp)
             }
 
-            Text("Jendela kecil", color = Ink.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MiniAppShortcuts.forEach { s -> Chip(s.label, false) { onOpenShortcut(s) } }
-            }
+            NativeAppsPanel(
+                apps = apps,
+                onLaunch = onLaunchNative,
+                onRefresh = onRefreshApps,
+                windowWidthDp = windowWidthDp,
+                windowHeightDp = windowHeightDp,
+                onWindowWidthChange = onWindowWidthChange,
+                onWindowHeightChange = onWindowHeightChange
+            )
         }
     }
 }

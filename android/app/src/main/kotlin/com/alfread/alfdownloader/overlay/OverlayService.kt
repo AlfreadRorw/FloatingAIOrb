@@ -7,10 +7,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
 import android.view.WindowManager
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
@@ -26,10 +28,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 class OverlayService : Service() {
-
     companion object {
         private const val CHANNEL = "overlay"
         private const val NOTIF_ID = 42
@@ -45,11 +48,12 @@ class OverlayService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var barAttached = false
     private var sideLeft = false
+    private var nativeApps = emptyList<NativeApp>()
 
-    private var browserParams: WindowManager.LayoutParams? = null
-    private var browserView: ComposeView? = null
-    private var browserLifecycle: OverlayLifecycleOwner? = null
-    private var currentShortcut: AppShortcut? = null
+    private var nativeTaskId: Int? = null
+    private var nativeBounds = Rect()
+    private var nativeWindowWidthDp by mutableIntStateOf(360)
+    private var nativeWindowHeightDp by mutableIntStateOf(560)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -60,8 +64,11 @@ class OverlayService : Service() {
         val prefs0 = settings.load()
         sideLeft = prefs0.bubbleSide == 0
         api = Api(prefs0.serverUrl)
+        nativeWindowWidthDp = prefs0.nativeWindowWidthDp
+        nativeWindowHeightDp = prefs0.nativeWindowHeightDp
         startForeground(NOTIF_ID, buildNotification())
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        nativeApps = loadLaunchableApps(this)
 
         if (prefs0.useShizuku && ShizukuHelper.hasPermission()) {
             runCatching {
@@ -69,23 +76,20 @@ class OverlayService : Service() {
                 ShizukuHelper.whitelistBattery("com.termux")
             }
         }
-
         addBar(prefs0)
     }
 
-    // ---------------- bar + panel window
+    private fun overlayType(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+    else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
     private fun addBar(prefs0: com.alfread.alfdownloader.model.Prefs) {
-        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
-
+        val d = resources.displayMetrics.density
+        val widthPx = (prefs0.bubbleThicknessDp.coerceIn(4, 18) * d).toInt()
+        val heightPx = (prefs0.bubbleLengthDp.coerceIn(60, 260) * d).toInt()
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         barParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            overlayType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
+            widthPx, heightPx, overlayType(), flags, PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or (if (sideLeft) Gravity.START else Gravity.END)
             x = 0
@@ -97,7 +101,8 @@ class OverlayService : Service() {
         barLifecycle.attachToView(barView)
 
         barView.setContent {
-            val accent = AccentOptions[prefs0.accent.coerceIn(0, AccentOptions.lastIndex)].color
+            val p = settings.load()
+            val accent = AccentOptions[p.accent.coerceIn(0, AccentOptions.lastIndex)].color
             AlfTheme(accent) {
                 OverlayBubble(
                     sideLeft = sideLeft,
@@ -107,10 +112,20 @@ class OverlayService : Service() {
                     onOpenApp = { openApp() },
                     onClose = { stopSelf() },
                     onDragY = { dy -> moveBarBy(dy) },
+                    onDragX = { dx ->
+                        val task = nativeTaskId
+                        if (task != null) resizeCurrentNativeBy(dxPx = dx) else resizeBarThicknessBy(dx)
+                    },
                     onDragEnd = { persistBarPosition() },
-                    onExpandedChange = { expanded -> setBarFocusable(expanded) },
+                    onExpandedChange = { expanded -> setBarExpanded(expanded) },
                     onSwitchSide = { switchSide() },
-                    onOpenShortcut = { shortcut -> openBrowser(shortcut) }
+                    onRefreshApps = { nativeApps = loadLaunchableApps(this) },
+                    onLaunchNative = { app -> openNativeApp(app) },
+                    apps = nativeApps,
+                    windowWidthDp = nativeWindowWidthDp,
+                    windowHeightDp = nativeWindowHeightDp,
+                    onWindowWidthChange = { value -> updateNativeSize(widthDp = value, heightDp = null) },
+                    onWindowHeightChange = { value -> updateNativeSize(widthDp = null, heightDp = value) }
                 )
             }
         }
@@ -121,19 +136,39 @@ class OverlayService : Service() {
         runCatching { wm.addView(barView, barParams); barAttached = true }.onFailure { stopSelf() }
     }
 
+    private fun setBarExpanded(expanded: Boolean) {
+        val d = resources.displayMetrics.density
+        val collapsedWidth = (settings.load().bubbleThicknessDp.coerceIn(4, 18) * d).toInt()
+        val collapsedHeight = (settings.load().bubbleLengthDp.coerceIn(60, 260) * d).toInt()
+        barParams.flags = if (expanded) {
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+        }
+        barParams.width = if (expanded) (264 * d).toInt() else collapsedWidth
+        barParams.height = if (expanded) WindowManager.LayoutParams.WRAP_CONTENT else collapsedHeight
+        if (barAttached) runCatching { wm.updateViewLayout(barView, barParams) }
+    }
+
     private fun moveBarBy(dy: Int) {
         val metrics = resources.displayMetrics
-        barParams.y = (barParams.y + dy).coerceIn(0, (metrics.heightPixels - 220).coerceAtLeast(0))
+        barParams.y = (barParams.y + dy).coerceIn(0, (metrics.heightPixels - barParams.height).coerceAtLeast(0))
         if (barAttached) runCatching { wm.updateViewLayout(barView, barParams) }
+    }
+
+    private fun resizeBarThicknessBy(dx: Int) {
+        val min = (4 * resources.displayMetrics.density).toInt()
+        val max = (18 * resources.displayMetrics.density).toInt()
+        val direction = if (sideLeft) 1 else -1
+        barParams.width = (barParams.width + dx * direction).coerceIn(min, max)
+        if (barAttached) runCatching { wm.updateViewLayout(barView, barParams) }
+        val dp = (barParams.width / resources.displayMetrics.density).toInt()
+        settings.save(settings.load().copy(bubbleThicknessDp = dp))
     }
 
     private fun persistBarPosition() {
-        settings.save(settings.load().copy(bubbleY = barParams.y))
-    }
-
-    private fun setBarFocusable(focusable: Boolean) {
-        barParams.flags = if (focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        if (barAttached) runCatching { wm.updateViewLayout(barView, barParams) }
+        val p = settings.load()
+        settings.save(p.copy(bubbleY = barParams.y, bubbleThicknessDp = (barParams.width / resources.displayMetrics.density).toInt()))
     }
 
     private fun switchSide() {
@@ -144,101 +179,76 @@ class OverlayService : Service() {
         addBar(settings.load())
     }
 
-    // ---------------- mini browser window
-
-    private fun openBrowser(shortcut: AppShortcut) {
-        currentShortcut = shortcut
-        if (browserView != null) {
-            browserView?.setContent { browserContent(shortcut) }
+    private fun openNativeApp(app: NativeApp) {
+        val prefs0 = settings.load()
+        if (!prefs0.useShizuku || !ShizukuHelper.hasPermission()) {
+            launchNativeApp(this, app.packageName)
             return
         }
-        val density = resources.displayMetrics.density
-        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
-        val params = WindowManager.LayoutParams(
-            (320 * density).toInt(), (480 * density).toInt(), overlayType,
-            0, PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = ((resources.displayMetrics.widthPixels - width) / 2).coerceAtLeast(0)
-            y = ((resources.displayMetrics.heightPixels - height) / 3).coerceAtLeast(0)
+        // Freeform mode is the actual app window. There is no WebView or screenshot copy here.
+        val prepared = ShizukuHelper.launchFreeform(app.packageName, app.activityName)
+        if (!prepared) {
+            launchNativeApp(this, app.packageName)
+            return
         }
-        browserParams = params
-
-        val lifecycle = OverlayLifecycleOwner()
-        val view = ComposeView(this)
-        lifecycle.attachToView(view)
-        view.setContent { browserContent(shortcut) }
-        lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-        lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        runCatching {
-            wm.addView(view, params)
-            browserView = view
-            browserLifecycle = lifecycle
+        scope.launch(Dispatchers.IO) {
+            var task: Int? = null
+            for (i in 0 until 12) {
+                delay(180)
+                task = ShizukuHelper.findTaskId(app.packageName)
+                if (task != null) break
+            }
+            nativeTaskId = task
+            if (task != null) {
+                applyPreferredNativeBounds()
+            }
         }
     }
 
-    @androidx.compose.runtime.Composable
-    private fun browserContent(shortcut: AppShortcut) {
-        val prefs0 = settings.load()
-        val accent = AccentOptions[prefs0.accent.coerceIn(0, AccentOptions.lastIndex)].color
-        AlfTheme(accent) {
-            MiniBrowserOverlay(
-                shortcut = shortcut,
-                onSwitch = { s -> openBrowser(s) },
-                onOpenNative = { openNativeOrFreeform(shortcut) },
-                onMinimize = { closeBrowser() },
-                onClose = { closeBrowser() },
-                onDragHeader = { dx, dy -> moveBrowserBy(dx, dy) },
-                onDragHeaderEnd = {},
-                onResize = { dx, dy -> resizeBrowserBy(dx, dy) },
-                onResizeEnd = {}
-            )
+    private fun applyPreferredNativeBounds() {
+        val task = nativeTaskId ?: return
+        val d = resources.displayMetrics.density
+        val w = (nativeWindowWidthDp * d).toInt().coerceAtLeast((240 * d).toInt())
+        val h = (nativeWindowHeightDp * d).toInt().coerceAtLeast((320 * d).toInt())
+        val sw = resources.displayMetrics.widthPixels
+        val sh = resources.displayMetrics.heightPixels
+        val left = ((sw - w) / 2).coerceAtLeast(0)
+        val top = ((sh - h) / 3).coerceAtLeast(0)
+        val right = (left + w).coerceAtMost(sw)
+        val bottom = (top + h).coerceAtMost(sh)
+        nativeBounds.set(left, top, right, bottom)
+        ShizukuHelper.resizeTask(task, left, top, right, bottom)
+    }
+
+    private fun resizeCurrentNativeBy(dxPx: Int) {
+        val task = nativeTaskId ?: return
+        if (nativeBounds.isEmpty) return
+        val minW = (240 * resources.displayMetrics.density).toInt()
+        val maxW = resources.displayMetrics.widthPixels - nativeBounds.left
+        val width = (nativeBounds.width() + dxPx * if (sideLeft) 1 else -1).coerceIn(minW, maxW)
+        nativeBounds.right = nativeBounds.left + width
+        ShizukuHelper.resizeTask(task, nativeBounds.left, nativeBounds.top, nativeBounds.right, nativeBounds.bottom)
+        val dp = (width / resources.displayMetrics.density).toInt()
+        settings.save(settings.load().copy(nativeWindowWidthDp = dp))
+    }
+
+    private fun updateNativeSize(widthDp: Int?, heightDp: Int?) {
+        val old = settings.load()
+        nativeWindowWidthDp = (widthDp ?: old.nativeWindowWidthDp).coerceIn(240, 600)
+        nativeWindowHeightDp = (heightDp ?: old.nativeWindowHeightDp).coerceIn(320, 900)
+        val next = old.copy(
+            nativeWindowWidthDp = nativeWindowWidthDp,
+            nativeWindowHeightDp = nativeWindowHeightDp
+        )
+        settings.save(next)
+        scope.launch(Dispatchers.IO) {
+            if (nativeTaskId != null) applyPreferredNativeBounds()
         }
     }
-
-    private fun moveBrowserBy(dx: Int, dy: Int) {
-        val p = browserParams ?: return
-        val metrics = resources.displayMetrics
-        p.x = (p.x + dx).coerceIn(0, (metrics.widthPixels - p.width).coerceAtLeast(0))
-        p.y = (p.y + dy).coerceIn(0, (metrics.heightPixels - p.height).coerceAtLeast(0))
-        browserView?.let { runCatching { wm.updateViewLayout(it, p) } }
-    }
-
-    private fun resizeBrowserBy(dx: Int, dy: Int) {
-        val p = browserParams ?: return
-        val density = resources.displayMetrics.density
-        p.width = (p.width + dx).coerceIn((220 * density).toInt(), resources.displayMetrics.widthPixels)
-        p.height = (p.height + dy).coerceIn((300 * density).toInt(), resources.displayMetrics.heightPixels)
-        browserView?.let { runCatching { wm.updateViewLayout(it, p) } }
-    }
-
-    private fun closeBrowser() {
-        browserView?.let { runCatching { wm.removeView(it) } }
-        browserLifecycle?.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        browserLifecycle?.destroy()
-        browserView = null
-        browserLifecycle = null
-        browserParams = null
-    }
-
-    private fun openNativeOrFreeform(shortcut: AppShortcut) {
-        val pkg = shortcut.installedPackage(this@OverlayService)
-        if (pkg == null) { openApp(); return }
-        val prefs0 = settings.load()
-        val freeformTried = prefs0.useShizuku && ShizukuHelper.hasPermission() &&
-            runCatching { ShizukuHelper.launchFreeform(pkg) }.getOrDefault(false)
-        if (!freeformTried) launchNativeApp(this@OverlayService, pkg)
-    }
-
-    // ---------------- lifecycle / notif
 
     override fun onDestroy() {
         running = false
-        closeBrowser()
         if (barAttached) runCatching { wm.removeView(barView) }
         barLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         barLifecycle.destroy()
@@ -263,7 +273,7 @@ class OverlayService : Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_alf)
             .setContentTitle("ALF mengambang aktif")
-            .setContentText("Ketuk untuk membuka aplikasi, atau matikan di Pengaturan")
+            .setContentText("Panel tetap bisa dipakai tanpa membekukan aplikasi di belakang")
             .setContentIntent(openIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)

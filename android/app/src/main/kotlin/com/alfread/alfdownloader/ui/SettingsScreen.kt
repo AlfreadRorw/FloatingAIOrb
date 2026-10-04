@@ -173,8 +173,33 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                     OptionGroup("Posisi bar", listOf("Kiri", "Kanan"), p.bubbleSide) { i -> c.update { it.copy(bubbleSide = i) } }
                 }
                 RowDivider()
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Panjang bar ${p.bubbleLengthDp} dp", color = Ink.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = p.bubbleLengthDp.toFloat(),
+                        onValueChange = { v -> c.update { it.copy(bubbleLengthDp = v.toInt()) } },
+                        valueRange = 60f..260f,
+                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = Ink.Surface3)
+                    )
+                    Text("Ketebalan bar ${p.bubbleThicknessDp} dp", color = Ink.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = p.bubbleThicknessDp.toFloat(),
+                        onValueChange = { v -> c.update { it.copy(bubbleThicknessDp = v.toInt()) } },
+                        valueRange = 4f..18f,
+                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = Ink.Surface3)
+                    )
+                }
+                RowDivider()
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Jendela aplikasi asli", color = Ink.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(
+                        "Tombol aplikasi di panel membuka APK aslinya sebagai Android freeform window — bukan WebView. Ukuran awal: ${p.nativeWindowWidthDp} × ${p.nativeWindowHeightDp} dp.",
+                        color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp
+                    )
+                }
+                RowDivider()
                 Text(
-                    "Dari panel bar: tempel & unduh cepat, lihat progres, dan buka \"Jendela kecil\" — mini browser mengambang untuk TikTok/WhatsApp/YouTube/Instagram, bisa diseret & diubah ukurannya.",
+                    "Panel ALF dibuat NOT_FOCUSABLE + NOT_TOUCH_MODAL supaya sentuhan di luar panel tetap diteruskan ke aplikasi di belakang. Saat Shizuku aktif, aplikasi dibuka sebagai task freeform asli Android.",
                     color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp,
                     modifier = Modifier.padding(16.dp)
                 )
@@ -203,7 +228,7 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                             color = Ink.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp
                         )
                         Text(
-                            "Dipakai untuk: bebas dari pembatasan baterai (Termux tidak mati sendiri), beri izin overlay tanpa buka Pengaturan, dan percobaan membuka app di jendela bebas.",
+                            "Dipakai untuk membebaskan baterai Termux/ALF dan mengontrol Android freeform window. Tanpa Shizuku, aplikasi hanya dibuka normal.",
                             color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp
                         )
                     }
@@ -221,6 +246,14 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                         val b = com.alfread.alfdownloader.shizuku.ShizukuHelper.whitelistBattery("com.termux")
                         c.toast(if (a && b) "ALF & Termux dibebaskan dari pembatasan baterai" else "Sebagian gagal — coba cara manual juga")
                     }
+                }
+                RowDivider()
+                GhostButton(
+                    "Aktifkan mode freeform", Icons.Rounded.OpenInNew,
+                    Modifier.padding(16.dp).fillMaxWidth(), enabled = shizukuGranted
+                ) {
+                    val ok = com.alfread.alfdownloader.shizuku.ShizukuHelper.enableFreeformSupport()
+                    c.toast(if (ok) "Mode freeform diminta. Coba buka aplikasi dari panel." else "Perangkat/ROM menolak pengaturan freeform")
                 }
                 RowDivider()
                 SwitchRow(

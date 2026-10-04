@@ -34,3 +34,20 @@ didukung yt-dlp, khusus untuk konten yang memang boleh Anda unduh. Tidak melewat
 4. Bagikan link dari TikTok/YouTube ke ALF untuk unduh instan.
 
 Build APK: GitHub Actions `Build ALF Downloader APK` (minSdk 26).
+
+## Native Freeform Windows (ALF v1.3 changes)
+
+The floating app panel no longer uses a WebView for TikTok, WhatsApp, YouTube, Instagram, or other apps. It enumerates real installed launcher apps and asks Android to open the selected package as a real freeform task when Shizuku is available.
+
+Setup on a supported device:
+
+1. Start Shizuku and grant ALF permission.
+2. Give ALF the "display over other apps" permission.
+3. In ALF → Settings → Shizuku, use **Aktifkan mode freeform** once.
+4. Turn on the floating bar.
+5. Open the bar, search/select an installed app, and tap it.
+6. Use the width/height sliders for the next native window. While a native window is open, horizontal dragging on the edge bar also changes its width.
+
+The panel uses `NOT_TOUCH_MODAL` so touches outside the panel are passed to the app underneath instead of freezing the screen.
+
+Freeform is controlled by Android's window manager, so support depends on the phone's ROM/build. On devices that reject freeform, ALF falls back to opening the real app normally instead of showing a WebView.

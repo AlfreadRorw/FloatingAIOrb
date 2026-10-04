@@ -6,15 +6,14 @@ import android.content.Intent
 data class AppShortcut(
     val id: String,
     val label: String,
-    val packages: List<String>,
-    val webUrl: String
+    val packages: List<String>
 )
 
 val MiniAppShortcuts = listOf(
-    AppShortcut("tiktok", "TikTok", listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), "https://www.tiktok.com"),
-    AppShortcut("whatsapp", "WhatsApp", listOf("com.whatsapp", "com.whatsapp.w4b"), "https://web.whatsapp.com"),
-    AppShortcut("youtube", "YouTube", listOf("com.google.android.youtube"), "https://m.youtube.com"),
-    AppShortcut("instagram", "Instagram", listOf("com.instagram.android"), "https://www.instagram.com")
+    AppShortcut("tiktok", "TikTok", listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill")),
+    AppShortcut("whatsapp", "WhatsApp", listOf("com.whatsapp", "com.whatsapp.w4b")),
+    AppShortcut("youtube", "YouTube", listOf("com.google.android.youtube")),
+    AppShortcut("instagram", "Instagram", listOf("com.instagram.android"))
 )
 
 fun AppShortcut.installedPackage(context: Context): String? =

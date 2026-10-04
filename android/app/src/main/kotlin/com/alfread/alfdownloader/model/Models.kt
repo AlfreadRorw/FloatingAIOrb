@@ -100,6 +100,10 @@ data class Prefs(
     val bubbleX: Int = -1,
     val bubbleY: Int = -1,
     val bubbleSide: Int = 1, // 0 kiri, 1 kanan
+    val bubbleLengthDp: Int = 112,
+    val bubbleThicknessDp: Int = 7,
+    val nativeWindowWidthDp: Int = 360,
+    val nativeWindowHeightDp: Int = 560,
     val useShizuku: Boolean = true,
     // tampilan
     val accent: Int = 0,
