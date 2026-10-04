@@ -44,6 +44,9 @@ class AppController(private val context: Context, private val scope: CoroutineSc
     var starting by mutableStateOf(false)
     var health by mutableStateOf<HealthResponse?>(null)
     var lastError by mutableStateOf<String?>(null)
+    var serverFailed by mutableStateOf(false)      // gagal menyala setelah semua percobaan
+    var serverStage by mutableStateOf("")          // teks tahap: "Menjalankan Termux…" dst.
+    var serverLog by mutableStateOf<List<String>>(emptyList())
 
     var url by mutableStateOf("")
     var info by mutableStateOf<MediaInfo?>(null)
@@ -62,6 +65,8 @@ class AppController(private val context: Context, private val scope: CoroutineSc
     var pendingAuto by mutableStateOf(false)
 
     private var startDeadline = 0L
+    private var startedAt = 0L
+    private var retried = 0
     private var lastClip: String? = null
     private var baseline = false
     private var configPushed = false
@@ -85,13 +90,40 @@ class AppController(private val context: Context, private val scope: CoroutineSc
             if (manual) toast("Termux belum terpasang")
             return
         }
+        serverFailed = false
         termux.startServer(prefs.serverDir)
             .onSuccess {
                 starting = true
-                startDeadline = System.currentTimeMillis() + 30_000
+                startedAt = System.currentTimeMillis()
+                startDeadline = startedAt + 75_000   // Termux dingin + muat yt-dlp bisa lama
+                retried = 0
+                serverStage = "Menjalankan Termux…"
                 if (manual) toast("Menyalakan server…")
             }
-            .onFailure { toast(it.message ?: "Gagal menjalankan Termux") }
+            .onFailure {
+                serverFailed = true
+                toast(it.message ?: "Gagal menjalankan Termux")
+            }
+    }
+
+    /** Pasang server + semua dependensi otomatis dari dalam APK (sesi Termux terbuka agar terlihat). */
+    fun installServer() {
+        termux.installServer()
+            .onSuccess {
+                toast("Memasang server di Termux… tunggu sampai selesai, lalu kembali ke ALF.")
+                starting = true
+                startedAt = System.currentTimeMillis()
+                startDeadline = startedAt + 600_000
+                serverStage = "Memasang server (sekali saja)…"
+                serverFailed = false
+            }
+            .onFailure { toast(it.message ?: "Gagal memasang server") }
+    }
+
+    fun loadServerLog() {
+        scope.launch {
+            serverLog = runCatching { api.log(120) }.getOrElse { listOf("Server offline — log tidak bisa dibaca.") }
+        }
     }
 
     fun updateYtdlp() {
@@ -133,7 +165,11 @@ class AppController(private val context: Context, private val scope: CoroutineSc
         if (online) {
             health = h.getOrNull()
             lastError = null
-            starting = false
+            serverFailed = false
+            if (h.getOrNull()?.ready == false) {
+                starting = true; serverStage = "Memuat yt-dlp…"
+                startDeadline = maxOf(startDeadline, System.currentTimeMillis() + 60_000)
+            } else { starting = false; serverStage = "" }
             if (!configPushed) {
                 runCatching { api.setConcurrent(prefs.maxConcurrent) }.onSuccess { configPushed = true }
             }
@@ -141,9 +177,25 @@ class AppController(private val context: Context, private val scope: CoroutineSc
         } else {
             lastError = h.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
             configPushed = false
-            if (starting && System.currentTimeMillis() > startDeadline) {
-                starting = false
-                toast("Server belum merespons. Cek Termux & izin di Pengaturan.")
+            val now = System.currentTimeMillis()
+            if (starting) {
+                val elapsed = now - startedAt
+                serverStage = when {
+                    elapsed < 6_000 -> "Menjalankan Termux…"
+                    elapsed < 20_000 -> "Menunggu server merespons…"
+                    else -> "Masih menunggu… (pertama kali bisa lama)"
+                }
+                // Coba ulang sekali bila Termux dingin tidak menangkap perintah pertama
+                if (retried == 0 && elapsed in 14_000..40_000 && termux.isInstalled()) {
+                    retried = 1
+                    termux.startServer(prefs.serverDir)
+                }
+                if (now > startDeadline) {
+                    starting = false
+                    serverFailed = true
+                    serverStage = ""
+                    toast("Server belum merespons. Lihat kartu bantuan di layar Unduh.")
+                }
             }
         }
     }

@@ -26,6 +26,8 @@ import com.alfread.alfdownloader.MainActivity
 import com.alfread.alfdownloader.R
 import com.alfread.alfdownloader.data.SettingsStore
 import com.alfread.alfdownloader.model.CreateJobRequest
+import com.alfread.alfdownloader.model.Prefs
+import com.alfread.alfdownloader.termux.TermuxRunner
 import com.alfread.alfdownloader.network.Api
 import com.alfread.alfdownloader.shizuku.ShizukuHelper
 import com.alfread.alfdownloader.ui.AccentOptions
@@ -42,6 +44,7 @@ class OverlayService : Service() {
     companion object {
         private const val CHANNEL = "overlay"
         private const val NOTIF_ID = 42
+        const val ACTION_STOP = "com.alfread.alfdownloader.STOP_OVERLAY"
         @Volatile var running = false
     }
 
@@ -63,12 +66,32 @@ class OverlayService : Service() {
     private var nativeAnchor by mutableIntStateOf(0)
     private var pinned by mutableStateOf(setOf<String>())
     private var freeformPrepared = false
+    private var panelPrefs by mutableStateOf(Prefs())
+    private var panelExpanded = false
+    private lateinit var termux: TermuxRunner
+    private var serverOnline = false
+    private var offlineSince = 0L
+    private var lastServerStart = 0L
+    private var lastNotifText = ""
+    // Sinkronkan perubahan dari layar Pengaturan aplikasi (tema, ukuran, dll.) ke panel secara langsung
+    private val prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        runCatching { panelPrefs = settings.load(); pinned = panelPrefs.pinnedPackages.toSet() }
+    }
 
     private fun toast(msg: String) {
         scope.launch(Dispatchers.Main) { Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show() }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            settings.save(settings.load().copy(floatingEnabled = false))
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return START_STICKY
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -82,7 +105,10 @@ class OverlayService : Service() {
         nativeAnchor = prefs0.nativeAnchor
         pinned = prefs0.pinnedPackages.toSet()
         ShizukuHelper.init()
-        startForeground(NOTIF_ID, buildNotification())
+        panelPrefs = prefs0
+        getSharedPreferences("alf_prefs", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(prefsListener)
+        termux = TermuxRunner(this)
+        startForeground(NOTIF_ID, buildNotification("ALF mengambang aktif"))
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         nativeApps = loadLaunchableApps(this)
 
@@ -93,6 +119,7 @@ class OverlayService : Service() {
             }
         }
         addBar(prefs0)
+        startWatchdog()
     }
 
     private fun overlayType(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -117,16 +144,14 @@ class OverlayService : Service() {
         barLifecycle.attachToView(barView)
 
         barView.setContent {
-            val p = settings.load()
+            val p = panelPrefs
             val accent = AccentOptions[p.accent.coerceIn(0, AccentOptions.lastIndex)].color
             AlfTheme(accent) {
                 OverlayBubble(
                     sideLeft = sideLeft,
+                    prefs = p,
                     pollHealth = { runCatching { api.health() }.getOrNull() },
                     pollJobs = { runCatching { api.jobs() }.getOrNull().orEmpty() },
-                    onDownload = { url -> if (url.isNotBlank()) scope.launch { runCatching { api.createJob(CreateJobRequest(url = url)) } } },
-                    onOpenApp = { openApp() },
-                    onClose = { stopSelf() },
                     onDragY = { dy -> moveBarBy(dy) },
                     onDragX = { dx ->
                         val task = nativeTaskId
@@ -134,21 +159,36 @@ class OverlayService : Service() {
                     },
                     onDragEnd = { persistBarPosition() },
                     onExpandedChange = { expanded -> setBarExpanded(expanded) },
-                    onSwitchSide = { switchSide() },
-                    onRefreshApps = { nativeApps = loadLaunchableApps(this) },
-                    onLaunchNative = { app -> openNativeApp(app) },
                     apps = nativeApps,
                     pinned = pinned,
-                    onTogglePin = { app -> togglePin(app) },
                     windowWidthDp = nativeWindowWidthDp,
                     windowHeightDp = nativeWindowHeightDp,
                     anchor = nativeAnchor,
-                    collapseOnLaunch = p.collapseOnLaunch,
-                    autoPasteOnExpand = p.autoPasteOnExpand,
-                    onWindowWidthChange = { value -> updateNativeSize(widthDp = value, heightDp = null) },
-                    onWindowHeightChange = { value -> updateNativeSize(widthDp = null, heightDp = value) },
-                    onPreset = { i -> applyPreset(i) },
-                    onAnchor = { i -> setAnchor(i) }
+                    actions = PanelActions(
+                        onDownload = { url, quality ->
+                            if (url.isNotBlank()) scope.launch {
+                                runCatching { api.createJob(CreateJobRequest(url = url, quality = quality, audioFormat = "mp3")) }
+                                    .onFailure { toast("Gagal: ${it.message?.take(80) ?: "server offline"}") }
+                            }
+                        },
+                        onCancel = { id -> scope.launch { runCatching { api.cancel(id) } } },
+                        onOpenApp = { openApp() },
+                        onClose = { stopSelf() },
+                        onSwitchSide = { switchSide() },
+                        onRefreshApps = { nativeApps = loadLaunchableApps(this) },
+                        onLaunchNative = { app -> openNativeApp(app) },
+                        onTogglePin = { app -> togglePin(app) },
+                        onWidth = { v -> updateNativeSize(widthDp = v, heightDp = null) },
+                        onHeight = { v -> updateNativeSize(widthDp = null, heightDp = v) },
+                        onPreset = { i -> applyPreset(i) },
+                        onAnchor = { i -> setAnchor(i) },
+                        onStartServer = { startServerNow(true) },
+                        onStopServer = { scope.launch { runCatching { api.shutdown() }; toast("Server dimatikan") } },
+                        onUpdateYtdlp = { scope.launch { runCatching { api.updateYtdlp() }.onSuccess { toast("Memperbarui yt-dlp…") } } },
+                        onClearFinished = { scope.launch { runCatching { api.clearFinished() }; toast("Riwayat selesai dibersihkan") } },
+                        onSetTheme = { i -> savePrefs { it.copy(panelTheme = i) } },
+                        onSetOpacity = { v -> savePrefs { it.copy(panelOpacity = v) } }
+                    )
                 )
             }
         }
@@ -159,18 +199,86 @@ class OverlayService : Service() {
         runCatching { wm.addView(barView, barParams); barAttached = true }.onFailure { stopSelf() }
     }
 
+    private fun savePrefs(block: (Prefs) -> Prefs) {
+        val next = block(settings.load())
+        settings.save(next)
+        panelPrefs = next
+    }
+
     private fun setBarExpanded(expanded: Boolean) {
+        panelExpanded = expanded
         val d = resources.displayMetrics.density
-        val collapsedWidth = (settings.load().bubbleThicknessDp.coerceIn(4, 18) * d).toInt()
-        val collapsedHeight = (settings.load().bubbleLengthDp.coerceIn(60, 260) * d).toInt()
+        val p = settings.load()
+        val collapsedWidth = (p.bubbleThicknessDp.coerceIn(4, 18) * d).toInt()
+        val collapsedHeight = (p.bubbleLengthDp.coerceIn(60, 260) * d).toInt()
         barParams.flags = if (expanded) {
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         } else {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         }
-        barParams.width = if (expanded) (264 * d).toInt() else collapsedWidth
+        barParams.width = if (expanded) (p.panelWidthDp * d).toInt() else collapsedWidth
         barParams.height = if (expanded) WindowManager.LayoutParams.WRAP_CONTENT else collapsedHeight
+        // Blur latar di belakang panel (Android 12+, bila perangkat mendukung)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (expanded && p.panelBlur) {
+                barParams.flags = barParams.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                barParams.blurBehindRadius = (24 * d).toInt()
+            } else {
+                barParams.flags = barParams.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
+                barParams.blurBehindRadius = 0
+            }
+        }
         if (barAttached) runCatching { wm.updateViewLayout(barView, barParams) }
+    }
+
+    // ---------------------------------------------------------------- server watchdog
+
+    /** Nyalakan server lewat Termux. Bisa dipanggil tombol manual atau watchdog. */
+    private fun startServerNow(manual: Boolean) {
+        if (!termux.isInstalled()) { if (manual) toast("Termux belum terpasang"); return }
+        lastServerStart = System.currentTimeMillis()
+        termux.startServer(settings.load().serverDir)
+            .onSuccess { if (manual) toast("Menyalakan server…") }
+            .onFailure { if (manual) toast(it.message ?: "Gagal menjalankan Termux") }
+    }
+
+    /**
+     * Pantau server. Bila mati dan "Jaga server tetap hidup" aktif → nyalakan otomatis.
+     * Bar mengambang berstatus jendela terlihat, sehingga Android mengizinkan start Termux dari latar belakang.
+     */
+    private fun startWatchdog() {
+        scope.launch {
+            delay(800)
+            while (true) {
+                val h = runCatching { api.health() }.getOrNull()
+                val up = h?.ok == true
+                val p = settings.load()
+                if (up) {
+                    serverOnline = true; offlineSince = 0L
+                } else {
+                    serverOnline = false
+                    val now = System.currentTimeMillis()
+                    if (offlineSince == 0L) offlineSince = now
+                    val shouldStart = (p.autoStart || p.keepServerAlive) &&
+                        now - lastServerStart > 40_000 && now - offlineSince > 1_500
+                    if (shouldStart) startServerNow(false)
+                }
+                updateNotification(
+                    when {
+                        !up -> "Server offline • menyalakan otomatis…"
+                        h?.ready == false -> "Server online • memuat yt-dlp…"
+                        else -> "Server online • yt-dlp ${h?.ytdlp ?: ""}"
+                    }
+                )
+                delay(if (up) 4000 else 2500)
+            }
+        }
+    }
+
+    private fun updateNotification(text: String) {
+        if (text == lastNotifText) return
+        lastNotifText = text
+        runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification(text)) }
     }
 
     private fun moveBarBy(dy: Int) {
@@ -328,6 +436,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         running = false
+        runCatching { getSharedPreferences("alf_prefs", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(prefsListener) }
         if (barAttached) runCatching { wm.removeView(barView) }
         barLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         barLifecycle.destroy()
@@ -342,18 +451,22 @@ class OverlayService : Service() {
         startActivity(i)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(text: String): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Jendela mengambang", NotificationManager.IMPORTANCE_MIN))
         val openIntent = PendingIntent.getActivity(
             this, 1, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE
         )
+        val stopIntent = PendingIntent.getService(
+            this, 2, Intent(this, OverlayService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_alf)
-            .setContentTitle("ALF mengambang aktif")
-            .setContentText("Panel tetap bisa dipakai tanpa membekukan aplikasi di belakang")
+            .setContentTitle("ALF mengambang")
+            .setContentText(text)
             .setContentIntent(openIntent)
+            .addAction(0, "Tutup bar", stopIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()

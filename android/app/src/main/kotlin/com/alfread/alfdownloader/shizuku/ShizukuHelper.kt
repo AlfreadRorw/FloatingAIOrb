@@ -103,6 +103,10 @@ object ShizukuHelper {
 
     fun whitelistBattery(packageName: String): Boolean = ok("cmd deviceidle whitelist +$packageName")
 
+    /** Beri ALF izin "Run commands in Termux" tanpa membuka Pengaturan Android. */
+    fun grantTermuxRunCommand(alfPackage: String): Boolean =
+        ok("pm grant $alfPackage com.termux.permission.RUN_COMMAND")
+
     fun allowOverlay(packageName: String): Boolean = ok("appops set $packageName SYSTEM_ALERT_WINDOW allow")
 
     /** Aktifkan flag freeform yang dipakai banyak ROM AOSP/OEM. Beberapa ROM butuh restart. */

@@ -89,6 +89,27 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                         color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp
                     )
                 }
+                RowDivider()
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GhostButton("Pasang server", Icons.Rounded.CloudDownload, Modifier.weight(1f), enabled = c.termux.hasPermission()) { c.installServer() }
+                    GhostButton("Salin izin", Icons.Rounded.Terminal, Modifier.weight(1f)) {
+                        c.termux.copyAllowExternalAndOpen(); c.toast("Tempel di Termux lalu Enter")
+                    }
+                }
+                RowDivider()
+                SwitchRow(Icons.Rounded.Shield, "Jaga server tetap hidup", "Bar mengambang memantau server & menyalakan ulang otomatis bila mati", p.keepServerAlive) { v -> c.update { it.copy(keepServerAlive = v) } }
+                RowDivider()
+                SwitchRow(Icons.Rounded.RestartAlt, "Jalankan setelah HP menyala", "Bar mengambang + server aktif otomatis setelah restart", p.startOnBoot) { v -> c.update { it.copy(startOnBoot = v) } }
+                RowDivider()
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GhostButton("Lihat log server", Icons.Rounded.Article, Modifier.fillMaxWidth(), enabled = c.online) { c.loadServerLog() }
+                    if (c.serverLog.isNotEmpty()) {
+                        Text(
+                            c.serverLog.takeLast(40).joinToString("\n"),
+                            color = Ink.Muted, fontSize = 10.sp, lineHeight = 13.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                }
             }
         }
 
@@ -136,6 +157,58 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                 SwitchRow(Icons.Rounded.Download, "Lencana unduhan aktif", "Tampilkan jumlah unduhan berjalan di ikon Unduh", p.dockBadge) { v -> c.update { it.copy(dockBadge = v) } }
                 RowDivider()
                 SwitchRow(Icons.Rounded.Vibration, "Getar halus", "Umpan balik haptik saat berpindah tab", p.haptics) { v -> c.update { it.copy(haptics = v) } }
+            }
+        }
+
+        // ---------------- tema jendela mengambang
+        item { SectionTitle("Tema jendela mengambang", Modifier.padding(top = 8.dp)) }
+        item {
+            Panel(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("Pilih tema", color = Ink.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        com.alfread.alfdownloader.overlay.PanelThemes.forEachIndexed { i, t ->
+                            val sel = p.panelTheme == i
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { c.update { it.copy(panelTheme = i) } }) {
+                                Box(
+                                    Modifier.size(width = 64.dp, height = 84.dp).clip(RoundedCornerShape(18.dp))
+                                        .background(Ink.Surface3).background(t.bgBrush(1f))
+                                        .border(if (sel) 2.5.dp else 1.dp, if (sel) t.accent else Ink.Line, RoundedCornerShape(18.dp))
+                                ) {
+                                    Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp).size(width = 36.dp, height = 8.dp).clip(RoundedCornerShape(50)).background(t.surface))
+                                    Box(Modifier.align(Alignment.Center).size(width = 40.dp, height = 12.dp).clip(RoundedCornerShape(50)).background(t.accent))
+                                    Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp).size(width = 36.dp, height = 8.dp).clip(RoundedCornerShape(50)).background(t.surface))
+                                }
+                                Text(t.name, color = if (sel) Ink.Text else Ink.Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp))
+                            }
+                        }
+                    }
+                    Column {
+                        Text("Kepekatan panel ${(p.panelOpacity * 100).toInt()}%", color = Ink.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Slider(
+                            value = p.panelOpacity, onValueChange = { v -> c.update { it.copy(panelOpacity = v) } }, valueRange = 0.4f..1f,
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = Ink.Surface3)
+                        )
+                        Text("Kelengkungan sudut ${p.panelCornerDp} dp", color = Ink.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Slider(
+                            value = p.panelCornerDp.toFloat(), onValueChange = { v -> c.update { it.copy(panelCornerDp = v.toInt()) } }, valueRange = 8f..36f,
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = Ink.Surface3)
+                        )
+                        Text("Lebar panel ${p.panelWidthDp} dp", color = Ink.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Slider(
+                            value = p.panelWidthDp.toFloat(), onValueChange = { v -> c.update { it.copy(panelWidthDp = v.toInt()) } }, valueRange = 240f..360f,
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = Ink.Surface3)
+                        )
+                    }
+                }
+                RowDivider()
+                SwitchRow(Icons.Rounded.Palette, "Pakai warna aksen tema", "Matikan untuk memakai warna aksen aplikasi (Pengaturan → Tampilan)", p.panelUseThemeAccent) { v -> c.update { it.copy(panelUseThemeAccent = v) } }
+                RowDivider()
+                SwitchRow(Icons.Rounded.BlurOn, "Blur latar belakang", "Buramkan layar di belakang panel (Android 12+)", p.panelBlur) { v -> c.update { it.copy(panelBlur = v) } }
+                RowDivider()
+                SwitchRow(Icons.Rounded.Bolt, "Bar berdenyut saat mengunduh", "Bar tepi layar menyala berdenyut selama ada unduhan", p.barGlow) { v -> c.update { it.copy(barGlow = v) } }
+                RowDivider()
+                SwitchRow(Icons.Rounded.Visibility, "Redupkan bar saat diam", "Bar jadi samar bila tidak ada unduhan supaya tidak mengganggu", p.barDimWhenIdle) { v -> c.update { it.copy(barDimWhenIdle = v) } }
             }
         }
 

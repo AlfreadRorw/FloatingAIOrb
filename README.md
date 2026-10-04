@@ -58,3 +58,11 @@ Freeform is controlled by Android's window manager, so support depends on the ph
 - Peluncuran freeform diverifikasi (cek windowing mode task), dipaksa freeform bila terbuka fullscreen, dan memberi pesan alasan bila gagal.
 - Tanpa Shizuku: tetap mencoba jendela kecil lewat launch bounds.
 - Baru: panel menciut otomatis setelah buka app, tempel link clipboard otomatis, favorit ★ (tahan ikon), preset ukuran, 5 posisi jendela, halaman Diagnosa.
+
+## v1.5 — Tema panel, server Termux cepat & otomatis
+- **Server jauh lebih cepat siap**: yt-dlp dimuat di thread latar (server langsung merespons), `/api/ping`, `/api/log`, `start.sh` mencegah server ganda.
+- **Termux otomatis**: `startForegroundService` (wajib di Android 8+), percobaan ulang otomatis, tahap progres ("Menjalankan Termux…", "Memuat yt-dlp…"), watchdog di bar mengambang yang menyalakan ulang server bila mati, jalankan setelah HP menyala.
+- **Pasang server otomatis dari APK** (server.py + start.sh ada di assets), tombol "Salin izin" (allow-external-apps), dan pemberian izin Run-Command lewat Shizuku.
+- **7 tema panel**: Obsidian, Kaca, Neon, Sunset, Aurora, Sakura (terang), AMOLED + kepekatan, sudut, lebar, blur, bar berdenyut/redup.
+- **Panel 3 tab**: Unduh (pilih kualitas, batal, progres + kecepatan), Aplikasi (favorit ★, jendela freeform), Alat (status server, nyalakan/matikan, update yt-dlp, ganti tema langsung).
+- Notifikasi menampilkan status server dengan tombol "Tutup bar".

@@ -67,6 +67,8 @@ class Api(baseUrl: String = "http://127.0.0.1:8080") {
     suspend fun retry(id: String) { request("POST", "/api/jobs/$id/retry") }
     suspend fun delete(id: String) { request("DELETE", "/api/jobs/$id") }
     suspend fun clearFinished() { request("POST", "/api/jobs/clear") }
+    suspend fun log(lines: Int = 80): List<String> =
+        json.decodeFromString<LogResponse>(request("GET", "/api/log?lines=$lines", readTimeout = 4000)).lines
     suspend fun shutdown() { request("POST", "/api/shutdown") }
     suspend fun updateYtdlp() { request("POST", "/api/update", readTimeout = 10000) }
 

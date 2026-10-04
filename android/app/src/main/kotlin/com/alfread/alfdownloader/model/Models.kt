@@ -10,8 +10,14 @@ data class HealthResponse(
     val ytdlp: String? = null,
     val freeBytes: Long = 0L,
     val downloadDir: String? = null,
-    val maxConcurrent: Int = 2
+    val maxConcurrent: Int = 2,
+    val ready: Boolean = true,
+    val error: String? = null,
+    val uptime: Int = 0
 )
+
+@Serializable
+data class LogResponse(val lines: List<String> = emptyList())
 
 @Serializable
 data class MediaInfo(
@@ -108,6 +114,18 @@ data class Prefs(
     val nativeAnchor: Int = 0,            // 0 tengah, 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah
     val collapseOnLaunch: Boolean = true, // panel otomatis menciut setelah membuka aplikasi
     val autoPasteOnExpand: Boolean = true,// otomatis tempel link dari clipboard saat panel dibuka
+    // tema & tampilan panel mengambang
+    val panelTheme: Int = 2,             // indeks PanelThemes
+    val panelUseThemeAccent: Boolean = true,
+    val panelOpacity: Float = 0.96f,
+    val panelCornerDp: Int = 24,
+    val panelWidthDp: Int = 288,
+    val panelBlur: Boolean = true,
+    val barDimWhenIdle: Boolean = true,
+    val barGlow: Boolean = true,
+    // server / Termux
+    val keepServerAlive: Boolean = true, // watchdog: nyalakan ulang server bila mati
+    val startOnBoot: Boolean = true,     // jalankan bar + server setelah HP menyala
     val pinnedPackages: List<String> = listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"),
     // tampilan
     val accent: Int = 0,

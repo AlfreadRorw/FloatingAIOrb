@@ -5,7 +5,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 echo "[1/4] Updating packages"
 pkg update -y
 echo "[2/4] Installing Python + FFmpeg + Node"
-pkg install -y python ffmpeg nodejs termux-api
+pkg install -y python ffmpeg nodejs termux-api curl
 echo "[3/4] Installing Python packages"
 python -m pip install -U pip
 python -m pip install -U "yt-dlp[default]" flask waitress

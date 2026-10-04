@@ -32,6 +32,7 @@ import com.alfread.alfdownloader.model.isActive
 fun DownloadScreen(c: AppController, bottomPad: androidx.compose.ui.unit.Dp) {
     val active = c.jobs.filter { it.isActive }
     val recent = c.jobs.filter { it.status == "completed" }.take(3)
+    val showHelp = !c.online && (c.starting || c.serverFailed || !c.termux.isInstalled() || !c.termux.hasPermission())
 
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding(),
@@ -39,6 +40,7 @@ fun DownloadScreen(c: AppController, bottomPad: androidx.compose.ui.unit.Dp) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item { TopBar(c) }
+        if (showHelp) item { ServerHelpCard(c) }
         item { LinkCard(c) }
         item {
             AnimatedVisibility(c.infoLoading || c.info != null || c.infoError != null) { InfoCard(c) }
@@ -47,7 +49,7 @@ fun DownloadScreen(c: AppController, bottomPad: androidx.compose.ui.unit.Dp) {
         item {
             val label = when {
                 c.online -> "Unduh sekarang"
-                c.starting -> "Menunggu server…"
+                c.starting -> c.serverStage.ifBlank { "Menunggu server…" }
                 else -> "Nyalakan server & unduh"
             }
             AccentButton(label, Icons.Rounded.Download, enabled = looksLikeUrl(c.url), loading = c.busy) { c.download() }
@@ -78,7 +80,11 @@ private fun TopBar(c: AppController) {
         Column(Modifier.weight(1f)) {
             Text("ALF Downloader", color = Ink.Text, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
             Text(
-                if (c.online) "yt-dlp ${c.health?.ytdlp ?: ""}".trim() else "Ketuk status untuk menyalakan server",
+                when {
+                    c.starting && c.serverStage.isNotBlank() -> c.serverStage
+                    c.online -> "yt-dlp ${c.health?.ytdlp ?: ""}".trim()
+                    else -> "Ketuk status untuk menyalakan server"
+                },
                 color = Ink.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         }
