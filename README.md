@@ -51,3 +51,10 @@ Setup on a supported device:
 The panel uses `NOT_TOUCH_MODAL` so touches outside the panel are passed to the app underneath instead of freezing the screen.
 
 Freeform is controlled by Android's window manager, so support depends on the phone's ROM/build. On devices that reject freeform, ALF falls back to opening the real app normally instead of showing a WebView.
+
+## v1.4 — Perbaikan Shizuku & jendela mengambang
+- **Shizuku tidak mendeteksi ALF**: ditambah `ShizukuProvider` + izin `moe.shizuku.manager.permission.API_V23` + dependency `shizuku:provider`. Tanpa ini ALF tidak muncul di "Aplikasi terotorisasi".
+- Status Shizuku kini reaktif (listener binder), tombol "Buka Shizuku", deteksi izin yang ditolak permanen.
+- Peluncuran freeform diverifikasi (cek windowing mode task), dipaksa freeform bila terbuka fullscreen, dan memberi pesan alasan bila gagal.
+- Tanpa Shizuku: tetap mencoba jendela kecil lewat launch bounds.
+- Baru: panel menciut otomatis setelah buka app, tempel link clipboard otomatis, favorit ★ (tahan ikon), preset ukuran, 5 posisi jendela, halaman Diagnosa.

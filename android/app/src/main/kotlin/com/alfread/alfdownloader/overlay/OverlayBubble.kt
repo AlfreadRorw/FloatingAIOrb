@@ -55,10 +55,17 @@ fun OverlayBubble(
     onRefreshApps: () -> Unit,
     onLaunchNative: (NativeApp) -> Unit,
     apps: List<NativeApp>,
+    pinned: Set<String>,
+    onTogglePin: (NativeApp) -> Unit,
     windowWidthDp: Int,
     windowHeightDp: Int,
+    anchor: Int,
+    collapseOnLaunch: Boolean,
+    autoPasteOnExpand: Boolean,
     onWindowWidthChange: (Int) -> Unit,
-    onWindowHeightChange: (Int) -> Unit
+    onWindowHeightChange: (Int) -> Unit,
+    onPreset: (Int) -> Unit,
+    onAnchor: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     var health by remember { mutableStateOf<HealthResponse?>(null) }
@@ -79,6 +86,15 @@ fun OverlayBubble(
         expanded = value
         onExpandedChange(value)
         if (!value) pasted = ""
+    }
+
+    // Fitur: saat panel dibuka, link yang baru disalin (mis. dari TikTok) otomatis terisi.
+    LaunchedEffect(expanded) {
+        if (expanded && autoPasteOnExpand && pasted.isBlank()) {
+            delay(300) // tunggu jendela fokus supaya clipboard boleh dibaca (Android 10+)
+            val t = runCatching { clipboard.getText()?.text.orEmpty().trim() }.getOrDefault("")
+            if (looksLikeUrl(t)) pasted = t
+        }
     }
 
     val active = jobs.filter { it.isActive }
@@ -198,12 +214,20 @@ fun OverlayBubble(
 
             NativeAppsPanel(
                 apps = apps,
-                onLaunch = onLaunchNative,
+                pinned = pinned,
+                onTogglePin = onTogglePin,
+                onLaunch = { app ->
+                    onLaunchNative(app)
+                    if (collapseOnLaunch) setExpanded(false) // panel menciut supaya tidak menutupi jendela
+                },
                 onRefresh = onRefreshApps,
                 windowWidthDp = windowWidthDp,
                 windowHeightDp = windowHeightDp,
+                anchor = anchor,
                 onWindowWidthChange = onWindowWidthChange,
-                onWindowHeightChange = onWindowHeightChange
+                onWindowHeightChange = onWindowHeightChange,
+                onPreset = onPreset,
+                onAnchor = onAnchor
             )
         }
     }

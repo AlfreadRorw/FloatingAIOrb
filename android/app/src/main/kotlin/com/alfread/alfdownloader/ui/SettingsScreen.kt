@@ -210,9 +210,11 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
         item { SectionTitle("Shizuku", Modifier.padding(top = 8.dp)) }
         item {
             val context = LocalContext.current
-            var shizukuGranted by remember { mutableStateOf(com.alfread.alfdownloader.shizuku.ShizukuHelper.hasPermission()) }
-            val installed = com.alfread.alfdownloader.shizuku.ShizukuHelper.isInstalled(context)
-            val ready = com.alfread.alfdownloader.shizuku.ShizukuHelper.isReady()
+            val H = com.alfread.alfdownloader.shizuku.ShizukuHelper
+            LaunchedEffect(Unit) { H.init() }
+            val installed = H.isInstalled(context)
+            val ready = H.binderAlive.value
+            val shizukuGranted = H.granted.value
             Panel(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconTile(Icons.Rounded.Security, tint = if (shizukuGranted) Ink.Success else Ink.Muted)
@@ -228,7 +230,7 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                             color = Ink.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp
                         )
                         Text(
-                            "Dipakai untuk membebaskan baterai Termux/ALF dan mengontrol Android freeform window. Tanpa Shizuku, aplikasi hanya dibuka normal.",
+                            "Dipakai untuk membuka aplikasi sebagai jendela mengambang asli & membebaskan baterai. Status ini diperbarui otomatis.",
                             color = Ink.Muted, fontSize = 12.sp, lineHeight = 16.sp
                         )
                     }
@@ -236,30 +238,89 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                 RowDivider()
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     GhostButton("Minta izin", Icons.Rounded.VerifiedUser, Modifier.weight(1f), enabled = ready && !shizukuGranted) {
-                        com.alfread.alfdownloader.shizuku.ShizukuHelper.requestPermission { granted ->
-                            shizukuGranted = granted
-                            c.toast(if (granted) "Shizuku diizinkan" else "Izin Shizuku ditolak")
+                        if (H.permanentlyDenied()) {
+                            c.toast("Izin pernah ditolak permanen. Buka Shizuku → Aplikasi terotorisasi → aktifkan ALF.")
+                        } else {
+                            H.requestPermission { granted -> c.toast(if (granted) "Shizuku diizinkan" else "Izin Shizuku ditolak") }
                         }
                     }
-                    GhostButton("Bebaskan baterai", Icons.Rounded.BatteryChargingFull, Modifier.weight(1f), enabled = shizukuGranted) {
-                        val a = com.alfread.alfdownloader.shizuku.ShizukuHelper.whitelistBattery(context.packageName)
-                        val b = com.alfread.alfdownloader.shizuku.ShizukuHelper.whitelistBattery("com.termux")
-                        c.toast(if (a && b) "ALF & Termux dibebaskan dari pembatasan baterai" else "Sebagian gagal — coba cara manual juga")
+                    GhostButton("Buka Shizuku", Icons.Rounded.OpenInNew, Modifier.weight(1f), enabled = installed) {
+                        if (!H.openShizukuApp(context)) c.toast("Tidak bisa membuka Shizuku")
                     }
                 }
                 RowDivider()
-                GhostButton(
-                    "Aktifkan mode freeform", Icons.Rounded.OpenInNew,
-                    Modifier.padding(16.dp).fillMaxWidth(), enabled = shizukuGranted
-                ) {
-                    val ok = com.alfread.alfdownloader.shizuku.ShizukuHelper.enableFreeformSupport()
-                    c.toast(if (ok) "Mode freeform diminta. Coba buka aplikasi dari panel." else "Perangkat/ROM menolak pengaturan freeform")
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GhostButton("Bebaskan baterai", Icons.Rounded.BatteryChargingFull, Modifier.weight(1f), enabled = shizukuGranted) {
+                        val a = H.whitelistBattery(context.packageName)
+                        val b = H.whitelistBattery("com.termux")
+                        c.toast(if (a && b) "ALF & Termux dibebaskan dari pembatasan baterai" else "Sebagian gagal — coba cara manual juga")
+                    }
+                    GhostButton("Aktifkan freeform", Icons.Rounded.OpenInNew, Modifier.weight(1f), enabled = shizukuGranted) {
+                        val ok = H.enableFreeformSupport()
+                        c.toast(if (ok) "Freeform diaktifkan. Jika belum berubah, restart HP sekali." else "ROM menolak pengaturan freeform")
+                    }
                 }
                 RowDivider()
                 SwitchRow(
                     Icons.Rounded.AutoFixHigh, "Pakai Shizuku otomatis",
-                    "Saat bar mengambang menyala, coba bebaskan baterai Termux & ALF lewat Shizuku", p.useShizuku
+                    "Bebaskan baterai & buka aplikasi sebagai jendela mengambang lewat Shizuku", p.useShizuku
                 ) { v -> c.update { it.copy(useShizuku = v) } }
+                RowDivider()
+                SwitchRow(
+                    Icons.Rounded.UnfoldLess, "Ciutkan panel setelah buka aplikasi",
+                    "Panel otomatis mengecil jadi garis supaya tidak menutupi jendela aplikasi", p.collapseOnLaunch
+                ) { v -> c.update { it.copy(collapseOnLaunch = v) } }
+                RowDivider()
+                SwitchRow(
+                    Icons.Rounded.ContentPaste, "Tempel link otomatis",
+                    "Saat panel dibuka, link yang baru disalin dari TikTok dll. langsung terisi — tinggal tekan Unduh", p.autoPasteOnExpand
+                ) { v -> c.update { it.copy(autoPasteOnExpand = v) } }
+            }
+        }
+
+        // ---------------- diagnosa
+        item { SectionTitle("Diagnosa jendela mengambang", Modifier.padding(top = 8.dp)) }
+        item {
+            val context = LocalContext.current
+            val H = com.alfread.alfdownloader.shizuku.ShizukuHelper
+            var tick by remember { mutableIntStateOf(0) }
+            val flags = remember(tick) { H.freeformFlags(context) }
+            val feature = remember(tick) { context.packageManager.hasSystemFeature("android.software.freeform_window_management") }
+            val rows = listOf(
+                "Izin \"Tampil di atas aplikasi lain\"" to OverlayController.canDrawOverlays(context),
+                "Shizuku terpasang" to H.isInstalled(context),
+                "Shizuku sedang berjalan" to H.binderAlive.value,
+                "ALF diizinkan di Shizuku" to H.granted.value,
+                "Freeform didukung sistem" to feature,
+                "enable_freeform_support = 1" to flags.first,
+                "force_resizable_activities = 1" to flags.second
+            )
+            Panel(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rows.forEach { (label, okay) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (okay) "✓" else "✗", color = if (okay) Ink.Success else Ink.Danger, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(Modifier.width(10.dp))
+                            Text(label, color = Ink.Text, fontSize = 13.sp)
+                        }
+                    }
+                    Text(
+                        "Jika \"Freeform didukung sistem\" ✗ tetapi flag ✓: buka Opsi pengembang → aktifkan \"Enable freeform windows\" dan \"Force activities to be resizable\", lalu restart HP.",
+                        color = Ink.Muted, fontSize = 11.sp, lineHeight = 15.sp
+                    )
+                }
+                RowDivider()
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GhostButton("Segarkan", Icons.Rounded.Refresh, Modifier.weight(1f)) { H.refresh(); tick++ }
+                    GhostButton("Opsi pengembang", Icons.Rounded.OpenInNew, Modifier.weight(1f)) {
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }.onFailure { c.toast("Buka Pengaturan → Tentang ponsel → ketuk Nomor versi 7×") }
+                    }
+                }
             }
         }
 

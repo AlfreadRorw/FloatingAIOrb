@@ -105,6 +105,10 @@ data class Prefs(
     val nativeWindowWidthDp: Int = 360,
     val nativeWindowHeightDp: Int = 560,
     val useShizuku: Boolean = true,
+    val nativeAnchor: Int = 0,            // 0 tengah, 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah
+    val collapseOnLaunch: Boolean = true, // panel otomatis menciut setelah membuka aplikasi
+    val autoPasteOnExpand: Boolean = true,// otomatis tempel link dari clipboard saat panel dibuka
+    val pinnedPackages: List<String> = listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"),
     // tampilan
     val accent: Int = 0,
     // default unduhan
