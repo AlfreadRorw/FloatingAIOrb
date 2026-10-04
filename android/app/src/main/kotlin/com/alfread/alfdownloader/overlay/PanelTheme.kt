@@ -73,3 +73,10 @@ val PanelThemes = listOf(
 
 /** Tema aktif untuk seluruh isi panel (dengan aksen yang sudah diputuskan). */
 val LocalPanel = compositionLocalOf { PanelThemes[0] }
+
+/** Tema aktif sesuai pengaturan (dipakai bingkai jendela & bar judul). */
+fun resolvePanelTheme(prefs: com.alfread.alfdownloader.model.Prefs): PanelTheme {
+    val base = PanelThemes[prefs.panelTheme.coerceIn(0, PanelThemes.lastIndex)]
+    return if (prefs.panelUseThemeAccent) base
+    else base.copy(accent = com.alfread.alfdownloader.ui.AccentOptions[prefs.accent.coerceIn(0, com.alfread.alfdownloader.ui.AccentOptions.lastIndex)].color)
+}

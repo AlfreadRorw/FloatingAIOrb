@@ -1,4 +1,4 @@
-name: Build ALF Downloader APK
+name: Build Alfread Tools APK
 
 on:
   workflow_dispatch:
@@ -46,6 +46,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ALF-Downloader-debug
+          name: Alfread-Tools-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

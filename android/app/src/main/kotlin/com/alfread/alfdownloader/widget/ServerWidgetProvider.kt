@@ -26,7 +26,7 @@ class ServerWidgetProvider : AppWidgetProvider() {
                 Toast.makeText(context, "Termux belum terpasang", Toast.LENGTH_SHORT).show()
             } else {
                 runner.startServer(prefs.serverDir)
-                    .onSuccess { Toast.makeText(context, "Menyalakan server ALF…", Toast.LENGTH_SHORT).show() }
+                    .onSuccess { Toast.makeText(context, "Menyalakan server Alfread…", Toast.LENGTH_SHORT).show() }
                     .onFailure { Toast.makeText(context, it.message ?: "Gagal menyalakan server", Toast.LENGTH_SHORT).show() }
             }
             return

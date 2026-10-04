@@ -35,7 +35,7 @@ val LocalAccent = compositionLocalOf { Color.White }
 enum class Tab { DOWNLOAD, LIBRARY, SETTINGS }
 
 @Composable
-fun AlfTheme(accent: Color, content: @Composable () -> Unit) {
+fun AlfTheme(accent: Color, fontIndex: Int = 1, content: @Composable () -> Unit) {
     val scheme = darkColorScheme(
         primary = accent, onPrimary = Color.Black,
         secondary = accent, onSecondary = Color.Black,
@@ -44,7 +44,8 @@ fun AlfTheme(accent: Color, content: @Composable () -> Unit) {
         surfaceVariant = Ink.Surface2, onSurfaceVariant = Ink.Muted,
         outline = Ink.Line
     )
+    val typography = androidx.compose.runtime.remember(fontIndex) { alfTypography(fontFamilyFor(fontIndex)) }
     CompositionLocalProvider(LocalAccent provides accent) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        MaterialTheme(colorScheme = scheme, typography = typography, content = content)
     }
 }

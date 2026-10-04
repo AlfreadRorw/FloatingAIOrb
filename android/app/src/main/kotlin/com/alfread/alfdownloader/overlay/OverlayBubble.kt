@@ -13,6 +13,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalConfiguration
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,7 +71,15 @@ class PanelActions(
     val onUpdateYtdlp: () -> Unit,
     val onClearFinished: () -> Unit,
     val onSetTheme: (Int) -> Unit,
-    val onSetOpacity: (Float) -> Unit
+    val onSetOpacity: (Float) -> Unit,
+    val onRestartServer: () -> Unit,
+    val onFixServer: () -> Unit,
+    val onOpenFolder: () -> Unit,
+    val onToggleLock: () -> Unit,
+    val onToggleFrame: () -> Unit,
+    val onCloseWindow: () -> Unit,
+    val onSetFont: (Int) -> Unit,
+    val onCaptionHeight: (Int) -> Unit
 )
 
 @Composable
@@ -83,6 +96,7 @@ fun OverlayBubble(
     prefs: Prefs,
     pollHealth: suspend () -> HealthResponse?,
     pollJobs: suspend () -> List<Job>,
+    pollLog: suspend () -> List<String>,
     onDragY: (Int) -> Unit,
     onDragX: (Int) -> Unit,
     onDragEnd: () -> Unit,
@@ -155,7 +169,7 @@ fun OverlayBubble(
                     StatusDot(online, ready, theme)
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("ALF", color = theme.text, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+                        Text("Alfread Tools", color = theme.text, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
                         Text(
                             when {
                                 !online -> "Server offline"
@@ -194,7 +208,8 @@ fun OverlayBubble(
                     }
                 }
 
-                Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                val maxContentH = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
+                Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp).heightIn(max = maxContentH).verticalScroll(rememberScrollState())) {
                     when (tab) {
                         0 -> DownloadTab(theme, jobs, pasted, { pasted = it }, online, actions) { text -> pasted = text }
                         1 -> NativeAppsPanel(
@@ -206,7 +221,7 @@ fun OverlayBubble(
                             },
                             actions = actions
                         )
-                        else -> ToolsTab(theme, prefs, health, online, active.isNotEmpty(), actions)
+                        else -> ToolsTab(theme, prefs, health, online, active.isNotEmpty(), pollLog, actions)
                     }
                 }
             }
@@ -366,9 +381,48 @@ private fun speedText(bps: Double): String = when {
 // ============================================================ tab: alat
 
 @Composable
-private fun ToolsTab(theme: PanelTheme, prefs: Prefs, health: HealthResponse?, online: Boolean, hasActive: Boolean, actions: PanelActions) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Kartu server
+private fun SectionLabel(text: String, theme: PanelTheme) {
+    Text(text.uppercase(), color = theme.muted, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+}
+
+@Composable
+private fun ToggleRow(label: String, desc: String, checked: Boolean, theme: PanelTheme, onChange: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(theme.surface)
+            .clickable(onClick = onChange).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = theme.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(desc, color = theme.muted, fontSize = 9.sp, lineHeight = 12.sp)
+        }
+        Spacer(Modifier.width(8.dp))
+        androidx.compose.material3.Switch(
+            checked = checked, onCheckedChange = { onChange() },
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = if (theme.light) Color.White else Color.Black,
+                checkedTrackColor = theme.accent,
+                uncheckedThumbColor = theme.muted,
+                uncheckedTrackColor = theme.muted.copy(alpha = 0.2f),
+                uncheckedBorderColor = theme.muted.copy(alpha = 0.4f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun ToolsTab(
+    theme: PanelTheme, prefs: Prefs, health: HealthResponse?, online: Boolean, hasActive: Boolean,
+    pollLog: suspend () -> List<String>, actions: PanelActions
+) {
+    val scope = rememberCoroutineScope()
+    var log by remember { mutableStateOf<List<String>>(emptyList()) }
+    var logLoading by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // ---------------- server
+        SectionLabel("Server", theme)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(theme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(if (online) "Server berjalan" else "Server mati", color = if (online) Ink.Success else Ink.Danger, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             if (online && health != null) {
@@ -381,11 +435,47 @@ private fun ToolsTab(theme: PanelTheme, prefs: Prefs, health: HealthResponse?, o
             ToolButton(Icons.Rounded.PowerSettingsNew, "Matikan", theme, Modifier.weight(1f), enabled = online && !hasActive) { actions.onStopServer() }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ToolButton(Icons.Rounded.RestartAlt, "Mulai ulang", theme, Modifier.weight(1f), enabled = online && !hasActive) { actions.onRestartServer() }
+            ToolButton(Icons.Rounded.Shield, "Anti-mati", theme, Modifier.weight(1f)) { actions.onFixServer() }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ToolButton(Icons.Rounded.Refresh, "Update yt-dlp", theme, Modifier.weight(1f), enabled = online) { actions.onUpdateYtdlp() }
             ToolButton(Icons.Rounded.DeleteSweep, "Bersihkan", theme, Modifier.weight(1f), enabled = online) { actions.onClearFinished() }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ToolButton(Icons.Rounded.Article, if (logLoading) "Memuat…" else "Log server", theme, Modifier.weight(1f)) {
+                scope.launch { logLoading = true; log = pollLog(); logLoading = false }
+            }
+            ToolButton(Icons.Rounded.FolderOpen, "Folder unduhan", theme, Modifier.weight(1f)) { actions.onOpenFolder() }
+        }
+        if (log.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(theme.surface).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    log.takeLast(14).joinToString("\n"), color = theme.muted, fontSize = 9.sp, lineHeight = 12.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ToolButton(Icons.Rounded.ContentPaste, "Salin log", theme, Modifier.weight(1f)) {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(log.joinToString("\n")))
+                    }
+                    ToolButton(Icons.Rounded.Close, "Tutup log", theme, Modifier.weight(1f)) { log = emptyList() }
+                }
+            }
+        }
 
-        // Tema langsung dari panel
+        // ---------------- jendela aplikasi
+        SectionLabel("Jendela aplikasi", theme)
+        ToggleRow("Kunci di atas", "Jendela tidak hilang saat mengetuk di luar — tutup lewat X", prefs.windowLock, theme) { actions.onToggleLock() }
+        ToggleRow("Bingkai & bar judul tema", "Ganti bar judul putih polos dengan tema panel", prefs.windowFrame, theme) { actions.onToggleFrame() }
+        Text("Tinggi bar judul ${prefs.captionHeightDp} dp (sesuaikan bila bar putih masih terlihat)", color = theme.muted, fontSize = 10.sp)
+        androidx.compose.material3.Slider(
+            value = prefs.captionHeightDp.toFloat(), onValueChange = { actions.onCaptionHeight(it.toInt()) }, valueRange = 28f..64f,
+            colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = theme.accent, activeTrackColor = theme.accent, inactiveTrackColor = theme.muted.copy(alpha = 0.25f))
+        )
+        ToolButton(Icons.Rounded.Close, "Tutup jendela aplikasi", theme, Modifier.fillMaxWidth()) { actions.onCloseWindow() }
+
+        // ---------------- tampilan
+        SectionLabel("Tampilan", theme)
         Text("Tema", color = theme.muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(PanelThemes.size) { i ->
@@ -405,6 +495,19 @@ private fun ToolsTab(theme: PanelTheme, prefs: Prefs, health: HealthResponse?, o
             value = prefs.panelOpacity, onValueChange = { actions.onSetOpacity(it) }, valueRange = 0.4f..1f,
             colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = theme.accent, activeTrackColor = theme.accent, inactiveTrackColor = theme.muted.copy(alpha = 0.25f))
         )
+        Text("Font", color = theme.muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(com.alfread.alfdownloader.ui.AlfFonts.size) { i ->
+                val f = com.alfread.alfdownloader.ui.AlfFonts[i]
+                val sel = prefs.fontIndex == i
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(if (sel) theme.accent else theme.surface)
+                        .clickable { actions.onSetFont(i) }.padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Text(f.name, color = if (sel) (if (theme.light) Color.White else Color.Black) else theme.text, fontSize = 11.sp, fontFamily = f.family)
+                }
+            }
+        }
     }
 }
 

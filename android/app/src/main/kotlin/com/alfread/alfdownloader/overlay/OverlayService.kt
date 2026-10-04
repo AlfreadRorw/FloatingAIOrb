@@ -12,7 +12,11 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.IBinder
 import android.widget.Toast
+import android.app.KeyguardManager
+import android.os.PowerManager
+import android.view.View
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import android.view.Gravity
 import android.view.WindowManager
@@ -27,6 +31,7 @@ import com.alfread.alfdownloader.R
 import com.alfread.alfdownloader.data.SettingsStore
 import com.alfread.alfdownloader.model.CreateJobRequest
 import com.alfread.alfdownloader.model.Prefs
+import com.alfread.alfdownloader.termux.ServerGuard
 import com.alfread.alfdownloader.termux.TermuxRunner
 import com.alfread.alfdownloader.network.Api
 import com.alfread.alfdownloader.shizuku.ShizukuHelper
@@ -73,6 +78,20 @@ class OverlayService : Service() {
     private var offlineSince = 0L
     private var lastServerStart = 0L
     private var lastNotifText = ""
+
+    // ---- bingkai + bar judul bertema di sekeliling jendela aplikasi
+    private var borderView: ComposeView? = null
+    private var borderLife: OverlayLifecycleOwner? = null
+    private var borderParams: WindowManager.LayoutParams? = null
+    private var titleView: ComposeView? = null
+    private var titleLife: OverlayLifecycleOwner? = null
+    private var titleParams: WindowManager.LayoutParams? = null
+    private var frameApp by mutableStateOf<NativeApp?>(null)
+    private var guardJob: Job? = null
+    private var dragging = false
+    private var lastResizeAt = 0L
+    private var lastRaiseAt = 0L
+    private var presetIndex = 1
     // Sinkronkan perubahan dari layar Pengaturan aplikasi (tema, ukuran, dll.) ke panel secara langsung
     private val prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         runCatching { panelPrefs = settings.load(); pinned = panelPrefs.pinnedPackages.toSet() }
@@ -86,7 +105,7 @@ class OverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            settings.save(settings.load().copy(floatingEnabled = false))
+            settings.update { it.copy(floatingEnabled = false) }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -108,14 +127,16 @@ class OverlayService : Service() {
         panelPrefs = prefs0
         getSharedPreferences("alf_prefs", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(prefsListener)
         termux = TermuxRunner(this)
-        startForeground(NOTIF_ID, buildNotification("ALF mengambang aktif"))
+        startForeground(NOTIF_ID, buildNotification("Alfread Tools aktif"))
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         nativeApps = loadLaunchableApps(this)
 
         if (prefs0.useShizuku && ShizukuHelper.hasPermission()) {
-            runCatching {
-                ShizukuHelper.whitelistBattery(packageName)
-                ShizukuHelper.whitelistBattery("com.termux")
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    ShizukuHelper.whitelistBattery(packageName)
+                    ShizukuHelper.hardenTermux(packageName)   // anti-mati: phantom killer, Doze, background
+                }
             }
         }
         addBar(prefs0)
@@ -146,12 +167,13 @@ class OverlayService : Service() {
         barView.setContent {
             val p = panelPrefs
             val accent = AccentOptions[p.accent.coerceIn(0, AccentOptions.lastIndex)].color
-            AlfTheme(accent) {
+            AlfTheme(accent, p.fontIndex) {
                 OverlayBubble(
                     sideLeft = sideLeft,
                     prefs = p,
                     pollHealth = { runCatching { api.health() }.getOrNull() },
                     pollJobs = { runCatching { api.jobs() }.getOrNull().orEmpty() },
+                    pollLog = { runCatching { api.log(60) }.getOrElse { listOf("Server offline — log tidak bisa dibaca.") } },
                     onDragY = { dy -> moveBarBy(dy) },
                     onDragX = { dx ->
                         val task = nativeTaskId
@@ -182,8 +204,16 @@ class OverlayService : Service() {
                         onHeight = { v -> updateNativeSize(widthDp = null, heightDp = v) },
                         onPreset = { i -> applyPreset(i) },
                         onAnchor = { i -> setAnchor(i) },
-                        onStartServer = { startServerNow(true) },
-                        onStopServer = { scope.launch { runCatching { api.shutdown() }; toast("Server dimatikan") } },
+                        onStartServer = { ServerGuard.stoppedByUser = false; startServerNow(true) },
+                        onStopServer = { ServerGuard.stoppedByUser = true; scope.launch { runCatching { api.shutdown() }; toast("Server dimatikan") } },
+                        onRestartServer = { restartServer() },
+                        onFixServer = { fixServerNow() },
+                        onOpenFolder = { openDownloadsFolder() },
+                        onToggleLock = { savePrefs { it.copy(windowLock = !it.windowLock) } },
+                        onToggleFrame = { savePrefs { it.copy(windowFrame = !it.windowFrame) } },
+                        onCloseWindow = { closeNativeWindow() },
+                        onSetFont = { i -> savePrefs { it.copy(fontIndex = i) } },
+                        onCaptionHeight = { v -> savePrefs { it.copy(captionHeightDp = v.coerceIn(28, 64)) }; updateFrameLayout() },
                         onUpdateYtdlp = { scope.launch { runCatching { api.updateYtdlp() }.onSuccess { toast("Memperbarui yt-dlp…") } } },
                         onClearFinished = { scope.launch { runCatching { api.clearFinished() }; toast("Riwayat selesai dibersihkan") } },
                         onSetTheme = { i -> savePrefs { it.copy(panelTheme = i) } },
@@ -200,9 +230,7 @@ class OverlayService : Service() {
     }
 
     private fun savePrefs(block: (Prefs) -> Prefs) {
-        val next = block(settings.load())
-        settings.save(next)
-        panelPrefs = next
+        panelPrefs = settings.update(block)
     }
 
     private fun setBarExpanded(expanded: Boolean) {
@@ -259,8 +287,8 @@ class OverlayService : Service() {
                     serverOnline = false
                     val now = System.currentTimeMillis()
                     if (offlineSince == 0L) offlineSince = now
-                    val shouldStart = (p.autoStart || p.keepServerAlive) &&
-                        now - lastServerStart > 40_000 && now - offlineSince > 1_500
+                    val shouldStart = (p.autoStart || p.keepServerAlive) && !ServerGuard.stoppedByUser &&
+                        now - lastServerStart > 15_000 && now - offlineSince > 1_500
                     if (shouldStart) startServerNow(false)
                 }
                 updateNotification(
@@ -294,17 +322,18 @@ class OverlayService : Service() {
         barParams.width = (barParams.width + dx * direction).coerceIn(min, max)
         if (barAttached) runCatching { wm.updateViewLayout(barView, barParams) }
         val dp = (barParams.width / resources.displayMetrics.density).toInt()
-        settings.save(settings.load().copy(bubbleThicknessDp = dp))
+        settings.update { it.copy(bubbleThicknessDp = dp) }
     }
 
     private fun persistBarPosition() {
-        val p = settings.load()
-        settings.save(p.copy(bubbleY = barParams.y, bubbleThicknessDp = (barParams.width / resources.displayMetrics.density).toInt()))
+        val y = barParams.y
+        val th = (barParams.width / resources.displayMetrics.density).toInt()
+        settings.update { it.copy(bubbleY = y, bubbleThicknessDp = th) }
     }
 
     private fun switchSide() {
         sideLeft = !sideLeft
-        settings.save(settings.load().copy(bubbleSide = if (sideLeft) 0 else 1))
+        settings.update { it.copy(bubbleSide = if (sideLeft) 0 else 1) }
         if (barAttached) runCatching { wm.removeView(barView) }
         barAttached = false
         addBar(settings.load())
@@ -312,17 +341,19 @@ class OverlayService : Service() {
 
     private fun togglePin(app: NativeApp) {
         pinned = if (app.packageName in pinned) pinned - app.packageName else pinned + app.packageName
-        settings.save(settings.load().copy(pinnedPackages = pinned.toList()))
+        val list = pinned.toList()
+        settings.update { it.copy(pinnedPackages = list) }
     }
 
     private fun applyPreset(i: Int) {
+        presetIndex = i
         val (w, h) = when (i) { 0 -> 280 to 440; 2 -> 440 to 720; 3 -> 340 to 820; else -> 360 to 560 }
         updateNativeSize(w, h)
     }
 
     private fun setAnchor(i: Int) {
         nativeAnchor = i
-        settings.save(settings.load().copy(nativeAnchor = i))
+        settings.update { it.copy(nativeAnchor = i) }
         scope.launch(Dispatchers.IO) { if (nativeTaskId != null) applyPreferredNativeBounds() }
     }
 
@@ -369,6 +400,11 @@ class OverlayService : Service() {
                 }
             }
             applyPreferredNativeBounds()
+            withContext(Dispatchers.Main) {
+                frameApp = app
+                if (panelPrefs.windowFrame) showFrame()
+                startWindowGuard(app)
+            }
         }
     }
 
@@ -417,18 +453,16 @@ class OverlayService : Service() {
         nativeBounds.right = nativeBounds.left + width
         ShizukuHelper.resizeTask(task, nativeBounds.left, nativeBounds.top, nativeBounds.right, nativeBounds.bottom)
         val dp = (width / resources.displayMetrics.density).toInt()
-        settings.save(settings.load().copy(nativeWindowWidthDp = dp))
+        settings.update { it.copy(nativeWindowWidthDp = dp) }
     }
 
     private fun updateNativeSize(widthDp: Int?, heightDp: Int?) {
         val old = settings.load()
         nativeWindowWidthDp = (widthDp ?: old.nativeWindowWidthDp).coerceIn(240, 600)
         nativeWindowHeightDp = (heightDp ?: old.nativeWindowHeightDp).coerceIn(320, 900)
-        val next = old.copy(
-            nativeWindowWidthDp = nativeWindowWidthDp,
-            nativeWindowHeightDp = nativeWindowHeightDp
-        )
-        settings.save(next)
+        val wDp = nativeWindowWidthDp
+        val hDp = nativeWindowHeightDp
+        settings.update { it.copy(nativeWindowWidthDp = wDp, nativeWindowHeightDp = hDp) }
         scope.launch(Dispatchers.IO) {
             if (nativeTaskId != null) applyPreferredNativeBounds()
         }
@@ -437,11 +471,256 @@ class OverlayService : Service() {
     override fun onDestroy() {
         running = false
         runCatching { getSharedPreferences("alf_prefs", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(prefsListener) }
+        guardJob?.cancel()
+        removeFrame()
         if (barAttached) runCatching { wm.removeView(barView) }
         barLifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         barLifecycle.destroy()
         scope.cancel()
         super.onDestroy()
+    }
+
+    // ---------------------------------------------------------------- aksi Alat
+
+    private fun restartServer() {
+        ServerGuard.stoppedByUser = false
+        scope.launch {
+            runCatching { api.shutdown() }
+            toast("Memulai ulang server…")
+            delay(1800)
+            startServerNow(true)
+        }
+    }
+
+    /** Anti-mati penuh lewat Shizuku (phantom killer, Doze, background) + nyalakan server bila mati. */
+    private fun fixServerNow() {
+        ServerGuard.stoppedByUser = false
+        scope.launch(Dispatchers.IO) {
+            ShizukuHelper.refresh()
+            if (ShizukuHelper.hasPermission()) {
+                val ok = ShizukuHelper.hardenTermux(packageName)
+                toast(if (ok) "Anti-mati aktif: Termux dibebaskan dari pembatasan latar belakang" else "Sebagian perintah gagal — coba lagi")
+            } else {
+                toast("Butuh Shizuku aktif & diizinkan untuk anti-mati penuh. Penjaga tetap menyalakan ulang server otomatis.")
+            }
+            withContext(Dispatchers.Main) { if (!serverOnline) startServerNow(false) }
+        }
+    }
+
+    private fun openDownloadsFolder() {
+        val uri = android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload%2FALF%20Downloader")
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "vnd.android.document/directory")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { startActivity(view) }.onFailure {
+            runCatching {
+                startActivity(Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { toast("Buka folder: Download/ALF Downloader") }
+        }
+    }
+
+    // ---------------------------------------------------------------- bingkai & penjaga jendela aplikasi
+
+    private fun ensureFrame() {
+        if (borderView != null) return
+        val base = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+        // garis tepi: tidak bisa disentuh, jadi sentuhan tembus ke aplikasi
+        val bp = WindowManager.LayoutParams(1, 1, overlayType(), base or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, PixelFormat.TRANSLUCENT)
+            .apply { gravity = Gravity.TOP or Gravity.START }
+        val bl = OverlayLifecycleOwner()
+        val bv = ComposeView(this)
+        bl.attachToView(bv)
+        bv.setContent {
+            val p = panelPrefs
+            val accent = AccentOptions[p.accent.coerceIn(0, AccentOptions.lastIndex)].color
+            AlfTheme(accent, p.fontIndex) { WindowBorderOverlay(p) }
+        }
+
+        // bar judul: menutupi bar judul polos ROM, bisa diseret, punya tombol kunci/ukuran/X
+        val tp = WindowManager.LayoutParams(1, 1, overlayType(), base, PixelFormat.TRANSLUCENT)
+            .apply { gravity = Gravity.TOP or Gravity.START }
+        val tl = OverlayLifecycleOwner()
+        val tv = ComposeView(this)
+        tl.attachToView(tv)
+        tv.setContent {
+            val p = panelPrefs
+            val accent = AccentOptions[p.accent.coerceIn(0, AccentOptions.lastIndex)].color
+            AlfTheme(accent, p.fontIndex) {
+                WindowTitleOverlay(
+                    prefs = p, app = frameApp,
+                    onDrag = { dx, dy -> moveNativeBy(dx, dy) },
+                    onDragEnd = { finishNativeDrag() },
+                    onToggleLock = { savePrefs { it.copy(windowLock = !it.windowLock) } },
+                    onCycleSize = { applyPreset((presetIndex + 1) % 4) },
+                    onClose = { closeNativeWindow() }
+                )
+            }
+        }
+
+        for ((lf, v) in listOf(bl to bv, tl to tv)) {
+            lf.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+            lf.handleLifecycleEvent(Lifecycle.Event.ON_START)
+            lf.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        }
+        borderView = bv; borderLife = bl; borderParams = bp
+        titleView = tv; titleLife = tl; titleParams = tp
+        updateFrameGeometry()
+        val okB = runCatching { wm.addView(bv, bp) }.isSuccess
+        val okT = runCatching { wm.addView(tv, tp) }.isSuccess
+        if (!okB || !okT) removeFrame()
+    }
+
+    private fun showFrame() {
+        if (nativeBounds.isEmpty) nativeBounds.set(computeBounds())
+        ensureFrame()
+        updateFrameLayout()
+        setFrameVisible(true)
+    }
+
+    private fun updateFrameGeometry() {
+        val d = resources.displayMetrics.density
+        val b = nativeBounds
+        borderParams?.let { it.x = b.left; it.y = b.top; it.width = b.width().coerceAtLeast(1); it.height = b.height().coerceAtLeast(1) }
+        titleParams?.let {
+            it.x = b.left; it.y = b.top
+            it.width = b.width().coerceAtLeast(1)
+            it.height = (panelPrefs.captionHeightDp * d).toInt().coerceAtLeast(1)
+        }
+    }
+
+    private fun updateFrameLayout() {
+        if (borderView == null) return
+        updateFrameGeometry()
+        runCatching { borderView?.let { wm.updateViewLayout(it, borderParams) } }
+        runCatching { titleView?.let { wm.updateViewLayout(it, titleParams) } }
+    }
+
+    private fun setFrameVisible(visible: Boolean) {
+        val v = if (visible) View.VISIBLE else View.GONE
+        borderView?.visibility = v
+        titleView?.visibility = v
+    }
+
+    private fun removeFrame() {
+        borderView?.let { runCatching { wm.removeView(it) } }
+        titleView?.let { runCatching { wm.removeView(it) } }
+        for (lf in listOf(borderLife, titleLife)) {
+            lf?.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+            lf?.destroy()
+        }
+        borderView = null; borderLife = null; borderParams = null
+        titleView = null; titleLife = null; titleParams = null
+    }
+
+    /** Seret bar judul → pindahkan jendela aplikasi (bingkai ikut seketika, resize task di-throttle). */
+    private fun moveNativeBy(dx: Int, dy: Int) {
+        if (nativeBounds.isEmpty) return
+        dragging = true
+        val m = resources.displayMetrics
+        val d = m.density
+        val w = nativeBounds.width()
+        val capPx = (panelPrefs.captionHeightDp * d).toInt()
+        val l = (nativeBounds.left + dx).coerceIn(0, (m.widthPixels - w).coerceAtLeast(0))
+        val t = (nativeBounds.top + dy).coerceIn(0, (m.heightPixels - capPx).coerceAtLeast(0))
+        nativeBounds.offsetTo(l, t)
+        updateFrameLayout()
+        val now = System.currentTimeMillis()
+        val task = nativeTaskId
+        if (task != null && now - lastResizeAt > 140) {
+            lastResizeAt = now
+            val r = Rect(nativeBounds)
+            scope.launch(Dispatchers.IO) { ShizukuHelper.resizeTask(task, r.left, r.top, r.right, r.bottom) }
+        }
+    }
+
+    private fun finishNativeDrag() {
+        val task = nativeTaskId
+        val r = Rect(nativeBounds)
+        scope.launch(Dispatchers.IO) {
+            if (task != null && !r.isEmpty) ShizukuHelper.resizeTask(task, r.left, r.top, r.right, r.bottom)
+            delay(250)
+            dragging = false
+        }
+    }
+
+    /**
+     * Penjaga jendela: memantau task freeform setiap ~0,8 dtk.
+     *  - menyelaraskan bingkai dengan posisi/ukuran jendela yang sebenarnya,
+     *  - bila "Kunci di atas" aktif dan jendela tersembunyi (tertutup aplikasi lain karena mengetuk di luar),
+     *    bawa lagi ke depan — jendela hanya tertutup lewat tombol X,
+     *  - bila task benar-benar hilang (ditutup dari tempat lain) bingkai dibersihkan.
+     */
+    private fun startWindowGuard(app: NativeApp) {
+        guardJob?.cancel()
+        guardJob = scope.launch {
+            var missing = 0
+            delay(700)
+            while (nativeTaskId != null) {
+                val info = withContext(Dispatchers.IO) { ShizukuHelper.findTask(app.packageName) }
+                var visible = true
+                if (info == null) {
+                    if (++missing >= 3) { endNativeSession(); break }
+                } else {
+                    missing = 0
+                    nativeTaskId = info.id
+                    val freeform = info.mode == null || info.mode == "freeform"
+                    visible = info.visible != false
+                    val m = resources.displayMetrics
+                    val b = info.bounds
+                    if (b != null && freeform && !dragging && b.width() >= 200 && b.height() >= 200 &&
+                        (b.width() < m.widthPixels || b.height() < m.heightPixels)
+                    ) nativeBounds.set(b)
+
+                    if (!visible && panelPrefs.windowLock && screenAwake() &&
+                        System.currentTimeMillis() - lastRaiseAt > 2500
+                    ) {
+                        lastRaiseAt = System.currentTimeMillis()
+                        withContext(Dispatchers.IO) { ShizukuHelper.bringToFront(app.packageName, app.activityName) }
+                    }
+
+                    if (panelPrefs.windowFrame && freeform) {
+                        if (borderView == null) showFrame()
+                        updateFrameLayout()
+                        setFrameVisible(visible)
+                    } else if (borderView != null) {
+                        removeFrame()
+                    }
+                }
+                delay(if (visible) 800 else 450)
+            }
+        }
+    }
+
+    private fun screenAwake(): Boolean {
+        val pm = getSystemService(PowerManager::class.java)
+        val km = getSystemService(KeyguardManager::class.java)
+        return pm?.isInteractive != false && km?.isKeyguardLocked != true
+    }
+
+    private fun endNativeSession() {
+        nativeTaskId = null
+        removeFrame()
+        frameApp = null
+    }
+
+    /** Tombol X: satu-satunya cara menutup jendela. Coba hapus task; bila masih ada, hentikan paksa aplikasinya. */
+    private fun closeNativeWindow() {
+        val app = frameApp
+        val task = nativeTaskId
+        if (app == null && task == null) { toast("Tidak ada jendela aplikasi yang terbuka"); return }
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                if (task != null) ShizukuHelper.removeTask(task)
+                delay(650)
+                if (app != null && ShizukuHelper.findTask(app.packageName) != null) ShizukuHelper.forceStop(app.packageName)
+            }
+            endNativeSession()
+        }
     }
 
     private fun openApp() {
@@ -463,7 +742,7 @@ class OverlayService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_alf)
-            .setContentTitle("ALF mengambang")
+            .setContentTitle("Alfread Tools")
             .setContentText(text)
             .setContentIntent(openIntent)
             .addAction(0, "Tutup bar", stopIntent)

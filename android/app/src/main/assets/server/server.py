@@ -44,7 +44,7 @@ def ensure_ytdlp(timeout: float = 90.0) -> None:
         raise RuntimeError(YTDLP_ERROR or "yt-dlp belum terpasang (jalankan: pip install -U yt-dlp)")
 
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.6.0"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("ALF_PORT", "8080"))
 
@@ -542,6 +542,13 @@ def shutdown():
 
 
 def main() -> None:
+    # Jangan mati karena sesi Termux ditutup (SIGHUP) atau pipe log putus (SIGPIPE).
+    try:
+        import signal
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+    except Exception:
+        pass
     load_history()
     for job in jobs.values():
         if job.get("status") in ACTIVE or job.get("status") == "queued":

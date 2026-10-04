@@ -1,3 +1,14 @@
+# Alfread Tools 1.6 (dulu ALF Downloader)
+
+## Baru di 1.6
+- **Ganti nama** aplikasi jadi "Alfread Tools" (ID paket tetap `com.alfread.alfdownloader` supaya izin Shizuku/Termux & data lama tidak hilang). Nama file APK: `Alfread-Tools-debug.apk`.
+- **Font**: 9 pilihan font (Poppins bawaan, Righteous, Audiowide, Space Mono, Bebas, Pacifico, Lobster, Pixel, Sistem) — Pengaturan → Tampilan, atau tab Alat di panel mengambang.
+- **Jendela aplikasi bertema**: bingkai + bar judul bertema (ikon, nama aplikasi, kunci, ubah ukuran, X) menggantikan bar putih polos. Seret bar judul untuk memindahkan jendela.
+- **Kunci di atas**: mengetuk di luar jendela tidak lagi menyembunyikannya; hanya tombol X yang menutup.
+- **Fav aplikasi tidak hilang lagi**: disimpan terpisah & update atomik (sebelumnya tertimpa salinan lama dari layar utama).
+- **Server Termux tidak mati sendiri**: start.sh kini pengawas (auto-restart, abaikan SIGHUP, wake-lock), file server di Termux disegarkan otomatis tiap start, ditambah tombol "Anti-mati" (Shizuku: matikan phantom process killer, bebaskan Doze/background) dan penjaga yang menyalakan ulang server dalam ~15 dtk.
+- **Alat baru**: Mulai ulang server, Anti-mati, Log server (lihat & salin), Folder unduhan, kunci jendela, tombol tutup jendela, tinggi bar judul.
+
 # ALF Downloader 1.1
 
 Aplikasi Android (Jetpack Compose) + server lokal Termux (Flask + yt-dlp) untuk mengunduh media dari sumber yang

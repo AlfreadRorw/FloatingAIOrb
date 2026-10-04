@@ -140,20 +140,53 @@ object ShizukuHelper {
         return code == 0 && !out.contains("Error", ignoreCase = true) && !out.contains("Exception")
     }
 
-    data class TaskInfo(val id: Int, val mode: String?)
+    data class TaskInfo(
+        val id: Int,
+        val mode: String?,
+        val visible: Boolean? = null,
+        val bounds: android.graphics.Rect? = null
+    )
 
-    /** Cari task milik paket dan windowing mode-nya (mis. "freeform", "fullscreen"). */
-    fun findTask(packageName: String): TaskInfo? {
-        val (_, output) = sh("dumpsys activity activities")
-        var best: TaskInfo? = null
-        for (line in output.lineSequence()) {
-            if (!line.contains("Task{") || !line.contains(packageName)) continue
-            val id = Regex("#(\\d+)").find(line)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: continue
-            val mode = Regex("mode=(\\w+)").find(line)?.groupValues?.getOrNull(1)
-            val info = TaskInfo(id, mode)
-            if (best == null || mode == "freeform") best = info
-            if (mode == "freeform") break
+    private val BOUNDS_RES = listOf(
+        Regex("""bounds=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"""),
+        Regex("""[mM]Bounds=Rect\((-?\d+), (-?\d+) - (-?\d+), (-?\d+)\)"""),
+        Regex("""bounds=Rect\((-?\d+), (-?\d+) - (-?\d+), (-?\d+)\)""")
+    )
+
+    private fun parseBounds(line: String): android.graphics.Rect? {
+        for (re in BOUNDS_RES) {
+            val m = re.find(line) ?: continue
+            val v = m.groupValues.drop(1).map { it.toIntOrNull() ?: return null }
+            if (v[2] > v[0] && v[3] > v[1]) return android.graphics.Rect(v[0], v[1], v[2], v[3])
         }
+        return null
+    }
+
+    /** Cari task milik paket: windowing mode, apakah terlihat, dan (bila terbaca) batas jendelanya. */
+    fun findTask(packageName: String): TaskInfo? {
+        val safe = packageName.replace(Regex("[^A-Za-z0-9._]"), "")
+        if (safe.isBlank()) return null
+        // Saring di sisi shell supaya output kecil & cepat: hanya baris Task{...} dan baris bounds.
+        val (_, output) = sh("dumpsys activity activities | grep -E 'Task\\{|[bB]ounds='")
+        var best: TaskInfo? = null
+        var cur: TaskInfo? = null
+        var curMatches = false
+        fun flush() { if (curMatches && cur != null && (best == null || cur!!.mode == "freeform")) best = cur }
+        for (line in output.lineSequence()) {
+            if (line.contains("Task{")) {
+                flush()
+                curMatches = line.contains(safe)
+                val id = Regex("#(\\d+)").find(line)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                if (!curMatches || id == null) { cur = null; curMatches = false; continue }
+                val mode = Regex("mode=(\\w+)").find(line)?.groupValues?.getOrNull(1)
+                val visible = Regex("visible=(true|false)").find(line)?.groupValues?.getOrNull(1)?.toBooleanStrictOrNull()
+                cur = TaskInfo(id, mode, visible, null)
+            } else if (curMatches && cur != null && cur!!.bounds == null) {
+                val b = parseBounds(line)
+                if (b != null) cur = cur!!.copy(bounds = b)
+            }
+        }
+        flush()
         return best
     }
 
@@ -170,4 +203,48 @@ object ShizukuHelper {
     fun setTaskFreeform(taskId: Int): Boolean =
         ok("am task set-windowing-mode $taskId $FREEFORM_MODE") ||
             ok("cmd activity task set-windowing-mode $taskId $FREEFORM_MODE")
+
+    /** Bawa task freeform ke depan (dipakai penjaga "kunci di atas"), tetap dalam mode freeform. */
+    fun bringToFront(packageName: String, activityName: String?): Boolean {
+        val safePkg = packageName.replace(Regex("[^A-Za-z0-9._]"), "")
+        if (safePkg.isBlank()) return false
+        val cmd = if (!activityName.isNullOrBlank()) {
+            val comp = (if (activityName.startsWith(".")) "$safePkg/$safePkg$activityName" else "$safePkg/$activityName")
+                .replace(Regex("[^A-Za-z0-9_.$/]"), "")
+            "am start --user current --windowingMode $FREEFORM_MODE -f 0x20000 -n $comp"
+        } else {
+            "am start --user current --windowingMode $FREEFORM_MODE -f 0x20000 " +
+                "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $safePkg"
+        }
+        val (code, out) = sh(cmd)
+        return code == 0 && !out.contains("Error", ignoreCase = true) && !out.contains("Exception")
+    }
+
+    /** Tutup task (tanpa membunuh aplikasi bila ROM mendukung). Cek hasilnya lalu pakai force-stop bila perlu. */
+    fun removeTask(taskId: Int): Boolean =
+        ok("am task remove $taskId") || ok("cmd activity task remove $taskId")
+
+    fun forceStop(packageName: String): Boolean {
+        val safe = packageName.replace(Regex("[^A-Za-z0-9._]"), "")
+        return safe.isNotBlank() && ok("am force-stop $safe")
+    }
+
+    /**
+     * Anti-mati untuk Termux: matikan "phantom process killer" Android 12+, bebaskan dari Doze/baterai
+     * dan izinkan jalan di latar belakang. Mengembalikan true bila sebagian besar perintah berhasil.
+     */
+    fun hardenTermux(alfPackage: String): Boolean {
+        val cmds = listOf(
+            "cmd deviceidle whitelist +com.termux",
+            "cmd deviceidle whitelist +$alfPackage",
+            "cmd appops set com.termux RUN_IN_BACKGROUND allow",
+            "cmd appops set com.termux RUN_ANY_IN_BACKGROUND allow",
+            "cmd appops set $alfPackage RUN_ANY_IN_BACKGROUND allow",
+            "am set-standby-bucket com.termux active",
+            "device_config set_sync_disabled_for_tests persistent",
+            "device_config put activity_manager max_phantom_processes 2147483647",
+            "settings put global settings_enable_monitor_phantom_procs false"
+        )
+        return cmds.map { ok(it) }.count { it } >= 4
+    }
 }

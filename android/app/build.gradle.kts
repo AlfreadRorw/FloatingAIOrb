@@ -5,6 +5,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Nama file APK: Alfread-Tools-*.apk
+base { archivesName.set("Alfread-Tools") }
+
 android {
     namespace = "com.alfread.alfdownloader"
     compileSdk = 35
@@ -13,8 +16,8 @@ android {
         applicationId = "com.alfread.alfdownloader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.4.0"
+        versionCode = 7
+        versionName = "1.6.0"
     }
 
     buildTypes {

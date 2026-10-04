@@ -127,8 +127,14 @@ data class Prefs(
     val keepServerAlive: Boolean = true, // watchdog: nyalakan ulang server bila mati
     val startOnBoot: Boolean = true,     // jalankan bar + server setelah HP menyala
     val pinnedPackages: List<String> = listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"),
+    // bingkai & kunci jendela aplikasi (freeform)
+    val windowFrame: Boolean = true,     // bingkai + bar judul bertema di sekeliling jendela aplikasi
+    val windowLock: Boolean = true,      // jendela tetap di atas; tidak "hilang" saat mengetuk di luar
+    val captionHeightDp: Int = 42,       // tinggi bar judul bawaan ROM yang ditutup bar judul tema
+    val frameGlow: Boolean = true,
     // tampilan
     val accent: Int = 0,
+    val fontIndex: Int = 1,              // indeks AlfFonts (1 = Poppins)
     // default unduhan
     val defaultQuality: String = "best",
     val audioFormat: String = "mp3",

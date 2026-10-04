@@ -74,6 +74,7 @@ private fun App(resumeTick: Int, shared: String?, onSharedConsumed: () -> Unit) 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val c = remember { AppController(context, scope) }
+    DisposableEffect(c) { onDispose { c.dispose() } }
     val accent = AccentOptions[c.prefs.accent.coerceIn(0, AccentOptions.lastIndex)].color
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
@@ -131,7 +132,7 @@ private fun App(resumeTick: Int, shared: String?, onSharedConsumed: () -> Unit) 
     val floating = c.prefs.dockStyle == 0
     val bottomPad = if (floating) 118.dp else 16.dp
 
-    AlfTheme(accent) {
+    AlfTheme(accent, c.prefs.fontIndex) {
         Surface(Modifier.fillMaxSize(), color = Ink.Bg) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0C0C0F), Ink.Bg)))) {
                 Box(

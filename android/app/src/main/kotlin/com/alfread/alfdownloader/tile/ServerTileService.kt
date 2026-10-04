@@ -45,7 +45,7 @@ class ServerTileService : TileService() {
             val online = runCatching { Api(prefs.serverUrl).health().ok }.getOrDefault(false)
             qsTile?.apply {
                 state = if (online) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-                label = if (online) "ALF online" else "ALF offline"
+                label = if (online) "Alfread online" else "Alfread offline"
                 icon = Icon.createWithResource(this@ServerTileService, R.drawable.ic_stat_alf)
                 updateTile()
             }

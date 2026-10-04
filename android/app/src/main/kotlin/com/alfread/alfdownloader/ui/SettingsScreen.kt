@@ -209,6 +209,21 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                 SwitchRow(Icons.Rounded.Bolt, "Bar berdenyut saat mengunduh", "Bar tepi layar menyala berdenyut selama ada unduhan", p.barGlow) { v -> c.update { it.copy(barGlow = v) } }
                 RowDivider()
                 SwitchRow(Icons.Rounded.Visibility, "Redupkan bar saat diam", "Bar jadi samar bila tidak ada unduhan supaya tidak mengganggu", p.barDimWhenIdle) { v -> c.update { it.copy(barDimWhenIdle = v) } }
+                RowDivider()
+                SwitchRow(Icons.Rounded.Palette, "Bingkai & bar judul tema", "Jendela aplikasi (TikTok dll.) diberi garis tepi + bar judul bertema, bukan bar putih polos", p.windowFrame) { v -> c.update { it.copy(windowFrame = v) } }
+                RowDivider()
+                SwitchRow(Icons.Rounded.Shield, "Kunci jendela di atas", "Mengetuk di luar jendela tidak menyembunyikannya — hanya tombol X yang menutup", p.windowLock) { v -> c.update { it.copy(windowLock = v) } }
+                RowDivider()
+                SwitchRow(Icons.Rounded.Bolt, "Bingkai berdenyut", "Garis tepi jendela berdenyut halus", p.frameGlow) { v -> c.update { it.copy(frameGlow = v) } }
+                RowDivider()
+                Column(Modifier.padding(16.dp)) {
+                    Text("Tinggi bar judul ${p.captionHeightDp} dp", color = Ink.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = p.captionHeightDp.toFloat(), onValueChange = { v -> c.update { it.copy(captionHeightDp = v.toInt()) } }, valueRange = 28f..64f,
+                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = Ink.Surface3)
+                    )
+                    Text("Naikkan bila garis putih bar bawaan ROM masih terlihat di atas bar tema.", color = Ink.Muted, fontSize = 11.sp)
+                }
             }
         }
 
@@ -323,10 +338,14 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                 }
                 RowDivider()
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GhostButton("Bebaskan baterai", Icons.Rounded.BatteryChargingFull, Modifier.weight(1f), enabled = shizukuGranted) {
-                        val a = H.whitelistBattery(context.packageName)
-                        val b = H.whitelistBattery("com.termux")
-                        c.toast(if (a && b) "ALF & Termux dibebaskan dari pembatasan baterai" else "Sebagian gagal — coba cara manual juga")
+                    GhostButton("Anti-mati Termux", Icons.Rounded.BatteryChargingFull, Modifier.weight(1f), enabled = shizukuGranted) {
+                        val pkg = context.packageName
+                        Thread {
+                            val a = H.whitelistBattery(pkg)
+                            val b = H.whitelistBattery("com.termux")
+                            val h = H.hardenTermux(pkg)
+                            c.toast(if (a && b && h) "Anti-mati aktif: Termux & Alfread Tools bebas dari pembatasan latar belakang" else "Sebagian gagal — coba cara manual juga")
+                        }.start()
                     }
                     GhostButton("Aktifkan freeform", Icons.Rounded.OpenInNew, Modifier.weight(1f), enabled = shizukuGranted) {
                         val ok = H.enableFreeformSupport()
@@ -422,6 +441,35 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
                 }
             }
         }
+        item {
+            Panel(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconTile(Icons.Rounded.Article)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Font aplikasi", color = Ink.Text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text(AlfFonts[p.fontIndex.coerceIn(0, AlfFonts.lastIndex)].name, color = Ink.Muted, fontSize = 12.sp)
+                    }
+                }
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    AlfFonts.forEachIndexed { i, f ->
+                        val sel = i == p.fontIndex
+                        Box(
+                            Modifier.clip(RoundedCornerShape(14.dp))
+                                .background(if (sel) accent else Ink.Surface3)
+                                .border(1.dp, if (sel) accent else Ink.Line, RoundedCornerShape(14.dp))
+                                .clickable { c.update { it.copy(fontIndex = i) } }
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            Text("Alfread Tools", color = if (sel) Color.Black else Ink.Text, fontSize = 14.sp, fontFamily = f.family)
+                        }
+                    }
+                }
+            }
+        }
 
         // ---------------- defaults
         item { SectionTitle("Bawaan unduhan", Modifier.padding(top = 8.dp)) }
@@ -492,7 +540,7 @@ fun SettingsScreen(c: AppController, bottomPad: Dp) {
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 AlfMark(22.dp)
                 Spacer(Modifier.width(8.dp))
-                Text("ALF Downloader 1.1.0", color = Ink.Muted, fontSize = 12.sp)
+                Text("Alfread Tools 1.6.0", color = Ink.Muted, fontSize = 12.sp)
             }
         }
     }

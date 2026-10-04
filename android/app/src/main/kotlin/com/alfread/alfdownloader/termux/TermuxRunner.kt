@@ -8,6 +8,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 
+/** Status bersama (satu proses): bila pengguna menekan "Matikan", pengawas tidak boleh menyalakan lagi. */
+object ServerGuard {
+    @Volatile var stoppedByUser = false
+}
+
 class TermuxRunner(private val context: Context) {
     companion object {
         const val PERMISSION = "com.termux.permission.RUN_COMMAND"
@@ -80,15 +85,36 @@ class TermuxRunner(private val context: Context) {
         Unit
     }
 
-    /** Nyalakan server. Cepat: tidak menjalankan dua server (start.sh mengecek /api/ping dulu). */
+    /**
+     * Nyalakan server. Cepat & aman: start.sh mengecek /api/ping + pengawas dulu (tidak ada dua server).
+     * File server di Termux ikut disegarkan dari APK, jadi perbaikan anti-mati langsung berlaku
+     * tanpa perlu "Pasang server" ulang.
+     */
     fun startServer(serverDir: String): Result<Unit> {
         val primary = shellDir(serverDir.ifBlank { "~/alf-downloader-server" })
-        val script = """
-            for d in $primary "${'$'}HOME/alf-downloader-server" "${'$'}HOME/Github/termux-server" "${'$'}HOME/termux-server"; do
-              if [ -f "${'$'}d/server.py" ]; then cd "${'$'}d" && exec bash start.sh >> "${'$'}HOME/.alf-server.log" 2>&1; fi
-            done
-            echo "server.py tidak ditemukan — pakai tombol 'Pasang server otomatis' di ALF" >> "${'$'}HOME/.alf-server.log"
-        """.trimIndent()
+        val start = runCatching { asset("start.sh").trimEnd() }.getOrNull()
+        val server = runCatching { asset("server.py").trimEnd() }.getOrNull()
+        val script = buildString {
+            appendLine("for d in $primary \"\$HOME/alf-downloader-server\" \"\$HOME/Github/termux-server\" \"\$HOME/termux-server\"; do")
+            appendLine("  if [ -f \"\$d/server.py\" ]; then")
+            appendLine("    cd \"\$d\" || continue")
+            if (start != null) {
+                appendLine("    cat > start.sh.new <<'ALF_START_EOF'")
+                appendLine(start)
+                appendLine("ALF_START_EOF")
+                appendLine("    mv -f start.sh.new start.sh; chmod +x start.sh")
+            }
+            if (server != null) {
+                appendLine("    cat > server.py.new <<'ALF_SERVER_EOF'")
+                appendLine(server)
+                appendLine("ALF_SERVER_EOF")
+                appendLine("    mv -f server.py.new server.py")
+            }
+            appendLine("    exec bash start.sh")
+            appendLine("  fi")
+            appendLine("done")
+            appendLine("echo \"server.py tidak ditemukan — pakai tombol 'Pasang server otomatis' di Alfread Tools\" >> \"\$HOME/.alf-server.log\"")
+        }
         return send(script, background = true)
     }
 
@@ -124,7 +150,8 @@ class TermuxRunner(private val context: Context) {
             appendLine("mkdir -p '/storage/emulated/0/Download/ALF Downloader' 2>/dev/null || true")
             appendLine("python -m py_compile $d/alf-downloader-server/server.py")
             appendLine("echo '== Selesai! Server dijalankan… =='")
-            appendLine("cd $d/alf-downloader-server && exec bash start.sh")
+            appendLine("cd $d/alf-downloader-server && (nohup bash start.sh >> $d/.alf-server.log 2>&1 &)")
+            appendLine("sleep 2; echo 'Server berjalan di latar belakang — Termux boleh ditutup.'")
         }
         send(script, background = false).getOrThrow()
     }

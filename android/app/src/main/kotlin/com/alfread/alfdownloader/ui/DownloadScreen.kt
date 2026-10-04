@@ -78,7 +78,7 @@ private fun TopBar(c: AppController) {
         AlfMark(46.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("ALF Downloader", color = Ink.Text, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Alfread Tools", color = Ink.Text, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.4.sp)
             Text(
                 when {
                     c.starting && c.serverStage.isNotBlank() -> c.serverStage
@@ -209,7 +209,7 @@ private fun EmptyQueue() {
             Spacer(Modifier.height(14.dp))
             Text("Belum ada unduhan berjalan", color = Ink.Text, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
-            Text("Tempel link, atau bagikan dari TikTok / YouTube langsung ke ALF.", color = Ink.Muted, fontSize = 12.sp)
+            Text("Tempel link, atau bagikan dari TikTok / YouTube langsung ke Alfread Tools.", color = Ink.Muted, fontSize = 12.sp)
         }
     }
 }

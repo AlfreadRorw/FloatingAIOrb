@@ -14,6 +14,7 @@ import com.alfread.alfdownloader.data.SettingsStore
 import com.alfread.alfdownloader.model.*
 import com.alfread.alfdownloader.network.Api
 import com.alfread.alfdownloader.notify.Notifier
+import com.alfread.alfdownloader.termux.ServerGuard
 import com.alfread.alfdownloader.termux.TermuxRunner
 import com.alfread.alfdownloader.ui.Tab
 import kotlinx.coroutines.CancellationException
@@ -38,6 +39,21 @@ class AppController(private val context: Context, private val scope: CoroutineSc
 
     var prefs by mutableStateOf(settings.load())
     private var api = Api(prefs.serverUrl)
+
+    // Selalu sinkron dengan penyimpanan (mis. fav yang diubah dari panel mengambang) supaya
+    // layar ini tidak pernah menimpa data terbaru dengan salinan lama.
+    private val spListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        runCatching {
+            val fresh = settings.load()
+            if (fresh != prefs) {
+                val old = prefs
+                prefs = fresh
+                if (old.serverUrl != fresh.serverUrl) { api = Api(fresh.serverUrl); online = false }
+            }
+        }
+    }
+    init { settings.registerListener(spListener) }
+    fun dispose() { runCatching { settings.unregisterListener(spListener) } }
 
     var tab by mutableStateOf(Tab.DOWNLOAD)
     var online by mutableStateOf(false)
@@ -70,13 +86,15 @@ class AppController(private val context: Context, private val scope: CoroutineSc
     private var lastClip: String? = null
     private var baseline = false
     private var configPushed = false
+    private var wasOnline = false
+    private var lastAutoStart = 0L
     private val seen = mutableSetOf<String>()
 
     fun toast(text: String) { message = text }
 
     fun update(block: (Prefs) -> Prefs) {
         val old = prefs
-        prefs = block(old).also { settings.save(it) }
+        prefs = settings.update(block)   // baca nilai TERBARU dari penyimpanan, bukan salinan lama
         if (old.serverUrl != prefs.serverUrl) {
             api = Api(prefs.serverUrl)
             online = false
@@ -91,6 +109,7 @@ class AppController(private val context: Context, private val scope: CoroutineSc
             return
         }
         serverFailed = false
+        if (manual) ServerGuard.stoppedByUser = false
         termux.startServer(prefs.serverDir)
             .onSuccess {
                 starting = true
@@ -139,6 +158,7 @@ class AppController(private val context: Context, private val scope: CoroutineSc
     }
 
     fun stopServer() {
+        ServerGuard.stoppedByUser = true
         scope.launch {
             runCatching { api.shutdown() }
             delay(600)
@@ -162,6 +182,7 @@ class AppController(private val context: Context, private val scope: CoroutineSc
     suspend fun poll() {
         val h = runCatching { api.health() }
         online = h.getOrNull()?.ok == true
+        if (online) wasOnline = true
         if (online) {
             health = h.getOrNull()
             lastError = null
@@ -178,6 +199,12 @@ class AppController(private val context: Context, private val scope: CoroutineSc
             lastError = h.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
             configPushed = false
             val now = System.currentTimeMillis()
+            // Server tiba-tiba mati (bukan dimatikan pengguna) → nyalakan lagi otomatis
+            if (wasOnline && !starting && prefs.keepServerAlive && !ServerGuard.stoppedByUser && now - lastAutoStart > 15_000) {
+                wasOnline = false
+                lastAutoStart = now
+                startServer(false)
+            }
             if (starting) {
                 val elapsed = now - startedAt
                 serverStage = when {
