@@ -30,7 +30,7 @@ class ServerTileService : TileService() {
             val online = runCatching { Api(prefs.serverUrl).health().ok }.getOrDefault(false)
             if (!online) {
                 com.alfread.alfdownloader.termux.TermuxRunner(this@ServerTileService).startServer(prefs.serverDir)
-                tile?.apply { state = Tile.STATE_UNAVAILABLE; label = "Menyalakan…"; updateTile() }
+                qsTile?.apply { state = Tile.STATE_UNAVAILABLE; label = "Menyalakan…"; updateTile() }
             } else if (OverlayController.canDrawOverlays(this@ServerTileService)) {
                 if (OverlayController.isRunning) OverlayController.stop(this@ServerTileService) else OverlayController.start(this@ServerTileService)
                 refresh()
@@ -43,7 +43,7 @@ class ServerTileService : TileService() {
         val prefs = settings.load()
         scope.launch {
             val online = runCatching { Api(prefs.serverUrl).health().ok }.getOrDefault(false)
-            tile?.apply {
+            qsTile?.apply {
                 state = if (online) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
                 label = if (online) "ALF online" else "ALF offline"
                 icon = Icon.createWithResource(this@ServerTileService, R.drawable.ic_stat_alf)
