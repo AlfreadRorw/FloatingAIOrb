@@ -132,6 +132,9 @@ data class Prefs(
     val windowLock: Boolean = true,      // jendela tetap di atas; tidak "hilang" saat mengetuk di luar
     val captionHeightDp: Int = 42,       // tinggi bar judul bawaan ROM yang ditutup bar judul tema
     val frameGlow: Boolean = true,
+    // posisi+ukuran terakhir per paket aplikasi ("left,top,width,height" dalam px), supaya
+    // tiap app dibuka lagi di tempat yang sama persis seperti saat terakhir ditinggal
+    val nativeBoundsByApp: Map<String, String> = emptyMap(),
     // tampilan
     val accent: Int = 0,
     val fontIndex: Int = 1,              // indeks AlfFonts (1 = Poppins)

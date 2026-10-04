@@ -16,8 +16,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,11 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,26 +62,30 @@ fun WindowBorderOverlay(prefs: Prefs) {
 /**
  * Bar judul bertema yang menutupi bar judul polos bawaan ROM.
  * Seret = pindahkan jendela. Jendela HANYA tertutup lewat tombol X di sini (ketuk di luar tidak menutup).
+ *
+ * Catatan perbaikan: dulu delta drag dihitung ulang dari `view.getLocationOnScreen()` tiap event,
+ * padahal window ini sendiri ikut dipindah di tengah gesture yang sama → race dengan relayout
+ * WindowManager yang async, hasilnya jendela "lompat-lompat" ke segala arah saat diseret cepat.
+ * Sekarang dipakai `dragAmount` langsung dari detectDragGestures (delta sentuhan murni, tidak
+ * tergantung posisi window saat ini) — pola yang sama dipakai bar mengambang (CollapsedBar) dan
+ * sudah terbukti mulus di sana.
  */
 @Composable
 fun WindowTitleOverlay(
     prefs: Prefs,
     app: NativeApp?,
+    isMaximized: Boolean,
+    isMinimized: Boolean,
     onDrag: (dx: Int, dy: Int) -> Unit,
     onDragEnd: () -> Unit,
     onToggleLock: () -> Unit,
     onCycleSize: () -> Unit,
+    onToggleMaximize: () -> Unit,
+    onToggleMinimize: () -> Unit,
     onClose: () -> Unit
 ) {
     val theme = resolvePanelTheme(prefs)
     val shape = RoundedCornerShape(topStart = FrameCorner, topEnd = FrameCorner)
-    val view = LocalView.current
-    fun absolute(local: Offset): Offset {
-        val loc = IntArray(2)
-        view.getLocationOnScreen(loc)
-        return Offset(loc[0] + local.x, loc[1] + local.y)
-    }
-    val last = androidx.compose.runtime.remember { arrayOfNulls<Offset>(1) }
 
     Row(
         Modifier.fillMaxSize().clip(shape)
@@ -88,16 +93,12 @@ fun WindowTitleOverlay(
             .border(1.5.dp, theme.borderBrush(), shape)
             .pointerInput(Unit) {
                 detectDragGestures(
-                    onDragStart = { last[0] = absolute(it) },
-                    onDrag = { change, _ ->
+                    onDrag = { change, dragAmount ->
                         change.consume()
-                        val cur = absolute(change.position)
-                        val l = last[0] ?: cur
-                        onDrag((cur.x - l.x).roundToInt(), (cur.y - l.y).roundToInt())
-                        last[0] = cur
+                        onDrag(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
                     },
-                    onDragEnd = { last[0] = null; onDragEnd() },
-                    onDragCancel = { last[0] = null; onDragEnd() }
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragEnd() }
                 )
             }
             .padding(start = 10.dp, end = 4.dp),
@@ -117,6 +118,9 @@ fun WindowTitleOverlay(
         )
         TitleButton(if (prefs.windowLock) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
             if (prefs.windowLock) theme.accent else theme.muted, onToggleLock)
+        TitleButton(Icons.Rounded.Remove, if (isMinimized) theme.accent else theme.muted, onToggleMinimize)
+        TitleButton(if (isMaximized) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+            if (isMaximized) theme.accent else theme.muted, onToggleMaximize)
         TitleButton(Icons.Rounded.AspectRatio, theme.muted, onCycleSize)
         TitleButton(Icons.Rounded.Close, Ink.Danger, onClose)
     }

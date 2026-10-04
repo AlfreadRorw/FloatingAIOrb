@@ -334,6 +334,23 @@ private fun DownloadTab(
             }
         }
 
+        // Unduh banyak link sekaligus: tempel beberapa link dipisah baris baru (satu per baris).
+        val batchUrls = remember(pasted) {
+            pasted.lines().map { it.trim() }.filter { it.isNotBlank() && looksLikeUrl(it) }
+        }
+        if (batchUrls.size > 1) {
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(theme.surface).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("${batchUrls.size} link terdeteksi dari tempelan", color = theme.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                MiniButton(Icons.Rounded.PlaylistAddCheck, theme, enabled = online, filled = true) {
+                    batchUrls.forEach { actions.onDownload(it, quality) }
+                    setPasted("")
+                }
+            }
+        }
+
         if (!online) {
             Text("Server offline. Buka tab Alat → Nyalakan server.", color = theme.muted, fontSize = 11.sp)
         } else if (active.isEmpty()) {

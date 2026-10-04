@@ -42,6 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -89,9 +90,18 @@ class OverlayService : Service() {
     private var frameApp by mutableStateOf<NativeApp?>(null)
     private var guardJob: Job? = null
     private var dragging = false
-    private var lastResizeAt = 0L
     private var lastRaiseAt = 0L
     private var presetIndex = 1
+    private var isNativeMaximized by mutableStateOf(false)
+    private var isNativeMinimized by mutableStateOf(false)
+    private var preMaximizeBounds: Rect? = null
+    private var minimizedBounds: Rect? = null
+    // Antrian 1-slot: setiap perubahan bentuk jendela (geser/resize/maximize/minimize) cukup menulis
+    // ke sini, lalu satu worker di bawah yang benar-benar memanggil Shizuku secara berurutan.
+    // Ini mencegah beberapa panggilan "am task resize" yang ditembak bertubi-tubi selesai
+    // tidak berurutan (race) saat diseret cepat, yang sebelumnya bikin jendela kelihatan
+    // "lompat"/numpuk sebentar dengan posisi lama.
+    private val resizeRequest = MutableStateFlow<Rect?>(null)
     // Sinkronkan perubahan dari layar Pengaturan aplikasi (tema, ukuran, dll.) ke panel secara langsung
     private val prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         runCatching { panelPrefs = settings.load(); pinned = panelPrefs.pinnedPackages.toSet() }
@@ -141,6 +151,41 @@ class OverlayService : Service() {
         }
         addBar(prefs0)
         startWatchdog()
+        startResizeWorker()
+        startTermuxHardenLoop()
+    }
+
+    /** Satu-satunya tempat yang benar-benar memanggil ShizukuHelper.resizeTask, berurutan. */
+    private fun startResizeWorker() {
+        scope.launch(Dispatchers.IO) {
+            resizeRequest.collect { r ->
+                val task = nativeTaskId
+                if (r != null && task != null && !r.isEmpty) {
+                    runCatching { ShizukuHelper.resizeTask(task, r.left, r.top, r.right, r.bottom) }
+                }
+            }
+        }
+    }
+
+    /**
+     * Ulangi "anti-mati" Termux secara berkala (bukan cuma sekali di onCreate). Beberapa ROM
+     * (MIUI, ColorOS, dll.) diam-diam mengembalikan standby bucket / pembatasan baterai Termux
+     * setelah beberapa waktu idle, sehingga server Termux bisa mati-nyala sendiri di latar
+     * belakang walau sudah pernah "dibebaskan" sekali.
+     */
+    private fun startTermuxHardenLoop() {
+        scope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(15 * 60 * 1000L)
+                val p = settings.load()
+                if (p.useShizuku && ShizukuHelper.hasPermission()) {
+                    runCatching {
+                        ShizukuHelper.whitelistBattery(packageName)
+                        ShizukuHelper.hardenTermux(packageName)
+                    }
+                }
+            }
+        }
     }
 
     private fun overlayType(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -179,7 +224,13 @@ class OverlayService : Service() {
                         val task = nativeTaskId
                         if (task != null) resizeCurrentNativeBy(dxPx = dx) else resizeBarThicknessBy(dx)
                     },
-                    onDragEnd = { persistBarPosition() },
+                    onDragEnd = {
+                        persistBarPosition()
+                        if (nativeTaskId != null && !isNativeMaximized && !isNativeMinimized) {
+                            settings.update { it.copy(nativeWindowWidthDp = nativeWindowWidthDp) }
+                            saveNativeBoundsFor(frameApp?.packageName, nativeBounds)
+                        }
+                    },
                     onExpandedChange = { expanded -> setBarExpanded(expanded) },
                     apps = nativeApps,
                     pinned = pinned,
@@ -400,8 +451,15 @@ class OverlayService : Service() {
                 }
             }
             applyPreferredNativeBounds()
+            // Kalau app ini pernah diatur posisi/ukurannya, pakai itu lagi (per app, tidak global).
+            loadNativeBoundsFor(app.packageName)?.let { saved ->
+                nativeBounds.set(saved)
+                resizeRequest.value = Rect(nativeBounds)
+            }
             withContext(Dispatchers.Main) {
                 frameApp = app
+                isNativeMaximized = false
+                isNativeMinimized = false
                 if (panelPrefs.windowFrame) showFrame()
                 startWindowGuard(app)
             }
@@ -439,21 +497,27 @@ class OverlayService : Service() {
     }.getOrDefault(false)
 
     private fun applyPreferredNativeBounds() {
-        val task = nativeTaskId ?: return
+        if (nativeTaskId == null) return
         nativeBounds.set(computeBounds())
-        ShizukuHelper.resizeTask(task, nativeBounds.left, nativeBounds.top, nativeBounds.right, nativeBounds.bottom)
+        resizeRequest.value = Rect(nativeBounds)
     }
 
+    /**
+     * Resize lewat drag horizontal di bar mengambang. Dulu fungsi ini TIDAK memanggil
+     * updateFrameLayout(), jadi bingkai/bar judul tema tetap di ukuran lama sementara jendela
+     * aslinya sudah berubah ukuran → kelihatan numpuk/robek sesaat. Juga dulu menulis ke
+     * SharedPreferences di SETIAP frame drag (jank); sekarang cuma mengubah nilai di memori,
+     * penyimpanan permanennya terjadi sekali saat drag selesai (lihat onDragEnd di addBar()).
+     */
     private fun resizeCurrentNativeBy(dxPx: Int) {
-        val task = nativeTaskId ?: return
-        if (nativeBounds.isEmpty) return
+        if (nativeTaskId == null || nativeBounds.isEmpty) return
         val minW = (240 * resources.displayMetrics.density).toInt()
         val maxW = resources.displayMetrics.widthPixels - nativeBounds.left
         val width = (nativeBounds.width() + dxPx * if (sideLeft) 1 else -1).coerceIn(minW, maxW)
         nativeBounds.right = nativeBounds.left + width
-        ShizukuHelper.resizeTask(task, nativeBounds.left, nativeBounds.top, nativeBounds.right, nativeBounds.bottom)
-        val dp = (width / resources.displayMetrics.density).toInt()
-        settings.update { it.copy(nativeWindowWidthDp = dp) }
+        updateFrameLayout()
+        resizeRequest.value = Rect(nativeBounds)
+        nativeWindowWidthDp = (width / resources.displayMetrics.density).toInt()
     }
 
     private fun updateNativeSize(widthDp: Int?, heightDp: Int?) {
@@ -553,10 +617,13 @@ class OverlayService : Service() {
             AlfTheme(accent, p.fontIndex) {
                 WindowTitleOverlay(
                     prefs = p, app = frameApp,
+                    isMaximized = isNativeMaximized, isMinimized = isNativeMinimized,
                     onDrag = { dx, dy -> moveNativeBy(dx, dy) },
                     onDragEnd = { finishNativeDrag() },
                     onToggleLock = { savePrefs { it.copy(windowLock = !it.windowLock) } },
                     onCycleSize = { applyPreset((presetIndex + 1) % 4) },
+                    onToggleMaximize = { toggleMaximizeNative() },
+                    onToggleMinimize = { toggleMinimizeNative() },
                     onClose = { closeNativeWindow() }
                 )
             }
@@ -617,7 +684,9 @@ class OverlayService : Service() {
         titleView = null; titleLife = null; titleParams = null
     }
 
-    /** Seret bar judul → pindahkan jendela aplikasi (bingkai ikut seketika, resize task di-throttle). */
+    /** Seret bar judul → pindahkan jendela aplikasi. Bingkai ikut seketika; resize task asli
+     * dikirim lewat [resizeRequest] (diantre, tidak langsung) supaya tidak ada panggilan Shizuku
+     * yang tabrakan/selesai tidak berurutan saat diseret cepat. */
     private fun moveNativeBy(dx: Int, dy: Int) {
         if (nativeBounds.isEmpty) return
         dragging = true
@@ -629,23 +698,76 @@ class OverlayService : Service() {
         val t = (nativeBounds.top + dy).coerceIn(0, (m.heightPixels - capPx).coerceAtLeast(0))
         nativeBounds.offsetTo(l, t)
         updateFrameLayout()
-        val now = System.currentTimeMillis()
-        val task = nativeTaskId
-        if (task != null && now - lastResizeAt > 140) {
-            lastResizeAt = now
-            val r = Rect(nativeBounds)
-            scope.launch(Dispatchers.IO) { ShizukuHelper.resizeTask(task, r.left, r.top, r.right, r.bottom) }
-        }
+        resizeRequest.value = Rect(nativeBounds)
     }
 
     private fun finishNativeDrag() {
-        val task = nativeTaskId
-        val r = Rect(nativeBounds)
-        scope.launch(Dispatchers.IO) {
-            if (task != null && !r.isEmpty) ShizukuHelper.resizeTask(task, r.left, r.top, r.right, r.bottom)
-            delay(250)
-            dragging = false
+        resizeRequest.value = Rect(nativeBounds)
+        if (!isNativeMaximized && !isNativeMinimized) saveNativeBoundsFor(frameApp?.packageName, nativeBounds)
+        scope.launch { delay(250); dragging = false }
+    }
+
+    /** Maximize/restore jendela aplikasi (seperti tombol maximize di desktop). */
+    private fun toggleMaximizeNative() {
+        if (nativeTaskId == null || nativeBounds.isEmpty) return
+        if (isNativeMinimized) {
+            minimizedBounds?.let { nativeBounds.set(it) }
+            minimizedBounds = null
+            isNativeMinimized = false
         }
+        if (isNativeMaximized) {
+            preMaximizeBounds?.let { nativeBounds.set(it) }
+            preMaximizeBounds = null
+            isNativeMaximized = false
+        } else {
+            preMaximizeBounds = Rect(nativeBounds)
+            val m = resources.displayMetrics
+            val margin = (6 * m.density).toInt()
+            nativeBounds.set(margin, margin, m.widthPixels - margin, m.heightPixels - margin)
+            isNativeMaximized = true
+        }
+        updateFrameLayout()
+        resizeRequest.value = Rect(nativeBounds)
+    }
+
+    /** Minimize jendela aplikasi jadi cuma bar judul (tetap bisa diseret), tanpa menutup task. */
+    private fun toggleMinimizeNative() {
+        if (nativeTaskId == null || nativeBounds.isEmpty) return
+        if (isNativeMaximized) {
+            preMaximizeBounds?.let { nativeBounds.set(it) }
+            preMaximizeBounds = null
+            isNativeMaximized = false
+        }
+        if (isNativeMinimized) {
+            minimizedBounds?.let { nativeBounds.set(it) }
+            minimizedBounds = null
+            isNativeMinimized = false
+        } else {
+            minimizedBounds = Rect(nativeBounds)
+            val capPx = (panelPrefs.captionHeightDp * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            nativeBounds.bottom = nativeBounds.top + capPx
+            isNativeMinimized = true
+        }
+        updateFrameLayout()
+        resizeRequest.value = Rect(nativeBounds)
+    }
+
+    /** Simpan posisi+ukuran terakhir per paket aplikasi, supaya dibuka lagi nanti di tempat yang sama. */
+    private fun saveNativeBoundsFor(pkg: String?, r: Rect) {
+        if (pkg == null || r.isEmpty) return
+        val v = "${r.left},${r.top},${r.width()},${r.height()}"
+        settings.update { it.copy(nativeBoundsByApp = it.nativeBoundsByApp + (pkg to v)) }
+    }
+
+    private fun loadNativeBoundsFor(pkg: String): Rect? {
+        val parts = settings.load().nativeBoundsByApp[pkg]?.split(",")?.mapNotNull { it.toIntOrNull() } ?: return null
+        if (parts.size != 4) return null
+        val (l, t, w, h) = parts
+        if (w <= 0 || h <= 0) return null
+        val m = resources.displayMetrics
+        val left = l.coerceIn(0, (m.widthPixels - w).coerceAtLeast(0))
+        val top = t.coerceIn(0, (m.heightPixels - h).coerceAtLeast(0))
+        return Rect(left, top, left + w, top + h)
     }
 
     /**
@@ -704,6 +826,10 @@ class OverlayService : Service() {
 
     private fun endNativeSession() {
         nativeTaskId = null
+        isNativeMaximized = false
+        isNativeMinimized = false
+        preMaximizeBounds = null
+        minimizedBounds = null
         removeFrame()
         frameApp = null
     }
