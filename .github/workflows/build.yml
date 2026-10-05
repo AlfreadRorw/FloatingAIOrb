@@ -21,18 +21,23 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Show Android SDK location (debug info)
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          which sdkmanager || echo "sdkmanager not directly on PATH, will use full path"
+
+      - name: Accept Android SDK licenses
+        run: |
+          SDKMANAGER=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
+          yes | "$SDKMANAGER" --licenses || true
 
       - name: Install required SDK packages
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          SDKMANAGER=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Generate Gradle wrapper jar
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Regenerate wrapper (ensures gradle-wrapper.jar is present)
         run: gradle wrapper --gradle-version 8.9 --distribution-type bin
 
       - name: Grant execute permission to gradlew
