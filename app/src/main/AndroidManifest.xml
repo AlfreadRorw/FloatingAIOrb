@@ -1,79 +1,100 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Microphone for speech recognition & voice sample recording -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Notifications for the foreground listening service -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Keep CPU awake briefly when waking the screen -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
+
+    <!-- Foreground service for continuous wake-word listening -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- Query installed apps so "Open App" commands are never hardcoded -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Launch other apps' launch intents -->
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+
+    <!-- Restart listening service after device reboot, if the user enabled it -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <uses-feature
-        android:name="android.hardware.microphone"
-        android:required="false" />
+    <!-- Needed to open the battery-optimization settings screen for this app -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <queries>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-    </queries>
+    <uses-feature android:name="android.hardware.microphone" android:required="true" />
 
     <application
-        android:allowBackup="false"
-        android:icon="@drawable/ic_alf"
-        android:label="ALF Voice Control"
+        android:name=".AlfApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ALFVoiceControl">
-
-        <activity
-            android:name=".PinActivity"
-            android:exported="false"
-            android:screenOrientation="portrait" />
+        android:theme="@style/Theme.ALFVoiceControl"
+        tools:targetApi="35">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
-            android:turnScreenOn="false">
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.ALFVoiceControl">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!--
+            Shown when a "Screen On" voice command fires. It is allowed to draw
+            over the lock screen and turn the display on, but it never bypasses
+            the Android lock screen itself - the user still authenticates with
+            their own PIN/pattern/password/biometrics if one is set.
+        -->
+        <activity
+            android:name=".screen.ScreenWakeActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.ALFVoiceControl.ScreenWake" />
+
         <service
-            android:name=".service.VoiceMonitoringService"
+            android:name=".service.VoiceListeningService"
+            android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
         <receiver
-            android:name=".admin.AlfDeviceAdminReceiver"
-            android:description="@string/device_admin_description"
+            android:name=".security.AlfDeviceAdminReceiver"
             android:exported="true"
-            android:label="ALF Voice Control"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
             <meta-data
                 android:name="android.app.device_admin"
-                android:resource="@xml/device_admin_policies" />
+                android:resource="@xml/device_admin_receiver" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
             </intent-filter>
         </receiver>
 
         <receiver
             android:name=".service.BootCompletedReceiver"
-            android:enabled="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
     </application>
+
 </manifest>

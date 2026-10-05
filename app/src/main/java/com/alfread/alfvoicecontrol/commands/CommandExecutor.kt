@@ -1,50 +1,67 @@
 package com.alfread.alfvoicecontrol.commands
 
 import android.content.Context
-import android.content.Intent
-import android.os.Build
-import android.os.PowerManager
-import com.alfread.alfvoicecontrol.model.ActionType
-import com.alfread.alfvoicecontrol.model.VoiceCommand
-import com.alfread.alfvoicecontrol.screen.ScreenWakeManager
+import android.widget.Toast
+import com.alfread.alfvoicecontrol.data.ActionType
+import com.alfread.alfvoicecontrol.data.InstalledAppsRepository
+import com.alfread.alfvoicecontrol.data.VoiceCommand
+import com.alfread.alfvoicecontrol.screen.ScreenActionResult
+import com.alfread.alfvoicecontrol.screen.ScreenController
 
-class CommandExecutor(private val context: Context) {
-    enum class Result {
-        SUCCESS,
-        DISABLED,
-        TARGET_NOT_FOUND,
-        BLOCKED,
-        ADMIN_REQUIRED,
-        FAILED
-    }
+sealed class ExecutionResult {
+    data class Success(val message: String) : ExecutionResult()
+    data class Failed(val message: String) : ExecutionResult()
+}
 
-    fun execute(command: VoiceCommand, screenWakeEnabled: Boolean, screenOffEnabled: Boolean): Result {
+/**
+ * Executes the real action behind a matched [VoiceCommand]. Every branch
+ * calls an actual Android API - nothing here fakes success. If Android
+ * denies or cannot perform the action, that is surfaced back as a Failed
+ * result rather than pretended away.
+ */
+object CommandExecutor {
+
+    fun execute(context: Context, command: VoiceCommand): ExecutionResult {
         return when (command.actionType) {
-            ActionType.SCREEN_ON -> if (screenWakeEnabled) {
-                if (ScreenWakeManager(context).wakeScreen()) Result.SUCCESS else Result.FAILED
-            } else Result.DISABLED
+            ActionType.SCREEN_ON -> {
+                when (val result = ScreenController.turnScreenOn(context)) {
+                    is ScreenActionResult.Success -> ExecutionResult.Success("Screen turned on")
+                    is ScreenActionResult.Failed -> ExecutionResult.Failed(result.reason)
+                }
+            }
 
-            ActionType.SCREEN_OFF -> if (screenOffEnabled) {
-                val manager = ScreenWakeManager(context)
-                if (!manager.isDeviceAdminEnabled()) Result.ADMIN_REQUIRED
-                else runCatching { if (manager.lockScreen()) Result.SUCCESS else Result.FAILED }.getOrElse { Result.FAILED }
-            } else Result.DISABLED
+            ActionType.SCREEN_OFF -> {
+                when (val result = ScreenController.turnScreenOff(context)) {
+                    is ScreenActionResult.Success -> ExecutionResult.Success("Screen locked")
+                    is ScreenActionResult.Failed -> ExecutionResult.Failed(result.reason)
+                }
+            }
 
-            ActionType.OPEN_APP -> openApp(command.targetPackage)
+            ActionType.OPEN_APP -> {
+                val pkg = command.targetPackage
+                if (pkg.isNullOrBlank()) {
+                    ExecutionResult.Failed("No target app configured for this command")
+                } else {
+                    val intent = InstalledAppsRepository.getLaunchIntent(context, pkg)
+                    if (intent == null) {
+                        ExecutionResult.Failed("${command.targetAppLabel ?: pkg} is not installed or cannot be opened")
+                    } else {
+                        runCatching { context.startActivity(intent) }
+                            .fold(
+                                onSuccess = { ExecutionResult.Success("Opened ${command.targetAppLabel ?: pkg}") },
+                                onFailure = { ExecutionResult.Failed(it.message ?: "Could not open app") }
+                            )
+                    }
+                }
+            }
         }
     }
 
-    private fun openApp(packageName: String?): Result {
-        if (packageName.isNullOrBlank()) return Result.TARGET_NOT_FOUND
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-            ?: return Result.TARGET_NOT_FOUND
-        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-        return runCatching {
-            context.startActivity(launchIntent)
-            Result.SUCCESS
-        }.getOrElse {
-            // Android may block background activity starts. The caller reports the exact limitation instead of faking success.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Result.BLOCKED else Result.FAILED
+    fun showResultToast(context: Context, result: ExecutionResult) {
+        val text = when (result) {
+            is ExecutionResult.Success -> result.message
+            is ExecutionResult.Failed -> "Failed: ${result.message}"
         }
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
     }
 }

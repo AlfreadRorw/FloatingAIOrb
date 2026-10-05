@@ -1,134 +1,143 @@
 # ALF Voice Control
 
-ALF Voice Control is an offline-first Android voice-control app built with Kotlin, Jetpack Compose and Material 3.
+Aplikasi Android (Kotlin + Jetpack Compose) untuk mengontrol HP dengan suara yang
+direkam sendiri oleh pengguna: menyalakan layar, mematikan/mengunci layar, dan
+membuka aplikasi tertentu, dipicu oleh wake word + trigger phrase kustom.
 
-Package: `com.alfread.alfvoicecontrol`
+Semua data (command, rekaman suara, setting, PIN) disimpan **lokal** di perangkat.
+Tidak ada backend/server, tidak ada Firebase, tidak butuh internet untuk fitur
+voice command setelah aplikasi berjalan.
 
-## What it actually does
+---
 
-- Stores voice commands, settings, wake-word sample and recordings locally.
-- Records voice samples into the app's private internal storage.
-- Uses Android `SpeechRecognizer` for command recognition.
-- Prefers Android's on-device speech recognizer on API 31+ when an on-device engine/language model is available.
-- Falls back to the system speech recognizer when on-device recognition is unavailable. The fallback engine may require network access outside ALF's control.
-- Matches recognized text to saved trigger phrases with normalization, token overlap and bounded Levenshtein similarity.
-- Runs continuous wake-word/command sessions from a microphone foreground service. This is implemented as repeated short speech-recognition sessions, not as a proprietary always-on hardware hotword engine.
-- Can wake the display with Android power APIs where the device/OEM allows it.
-- Can turn the screen off through Android Device Administrator `DevicePolicyManager.lockNow()` after the user explicitly enables ALF's Device Administrator permission.
-- Can launch installed launcher-visible applications without hardcoded package names.
-- Uses no Firebase, backend, login or `INTERNET` permission.
-- Stores the optional ALF PIN as a salted SHA-256 hash; it is not an Android lock-screen replacement.
+## 1. Teknologi
 
-## Important Android limitations
+- Kotlin, Jetpack Compose, Material 3
+- Min SDK 24, Target SDK 35, JDK 17
+- Room (penyimpanan command), DataStore (settings), EncryptedSharedPreferences (PIN)
+- `SpeechRecognizer` bawaan Android untuk speech-to-text
+- `MediaRecorder` untuk rekam voice sample lokal
+- `DevicePolicyManager` (Device Administrator) untuk aksi screen-off
+- GitHub Actions untuk build APK otomatis
 
-### Wake word
-Android's public `SpeechRecognizer` API is a speech recognition API rather than a dedicated low-power always-on keyword detector. ALF therefore uses repeated short recognition sessions while its microphone foreground service is active. Reliability, battery use and OEM background behavior vary by device.
+---
 
-### On-device recognition
-On Android 12/API 31+, ALF attempts `SpeechRecognizer.createOnDeviceSpeechRecognizer()` first. If the device does not expose an on-device recognizer/language model, ALF uses the normal system recognizer. ALF itself does not upload recordings to a server.
+## 2. Build APK via GitHub Actions (cara termudah)
 
-### Screen on
-ALF uses the public power/screen APIs available to ordinary applications. It does not bypass the keyguard. If Android/OEM policy refuses the wake request, ALF reports failure instead of claiming success.
+1. Upload seluruh folder project ini ke repository GitHub baru.
+2. GitHub Actions akan otomatis jalan (lihat `.github/workflows/build.yml`) setiap
+   push ke `main`/`master`, atau jalankan manual lewat tab **Actions > Run workflow**.
+3. Workflow ini:
+   - Setup JDK 17 dan Android SDK (platform 35, build-tools 35.0.0)
+   - **Meregenerasi `gradle-wrapper.jar`** otomatis via `gradle wrapper` (jar biner
+     tidak disertakan langsung di repo karena bukan file teks, tapi akan dibuat ulang
+     setiap build CI, jadi build selalu bisa jalan dari fresh clone)
+   - Menjalankan `./gradlew assembleDebug`
+   - Mengupload hasil APK sebagai artifact bernama `alf-voice-control-debug-apk`
+4. Download APK dari halaman run workflow tersebut, di bagian **Artifacts**.
 
-### Screen off
-The Screen Off command requires the user to enable ALF's Device Administrator policy for force lock. ALF never reads or bypasses the Android PIN/pattern/password.
+## 3. Build lokal (opsional, kalau punya Android Studio)
 
-### Opening another app
-Android can block background activity launches even when a foreground service is running. If the package exists but Android refuses the launch, ALF reports that it was blocked.
-
-### Reboot
-Android 14+ places strict limits on starting microphone foreground services from boot/background because `RECORD_AUDIO` is a while-in-use permission. After reboot, ALF therefore posts a reminder instead of attempting an illegal microphone-service start.
-
-### Battery optimization / OEM behavior
-Some OEMs are more aggressive about stopping background work. Use the Background Operation screen to open Android battery settings and configure ALF according to the options available on the phone.
-
-## First run
-
-1. Open ALF Voice Control.
-2. Grant microphone permission when requested.
-3. Grant notification permission on Android 13+.
-4. Set the wake phrase; the default is `Alf`.
-5. Optionally create an ALF PIN.
-6. Start listening while ALF is visible.
-
-## Command examples
-
-- `Alf bangun` -> Screen On
-- `Alf tidur` -> Screen Off (requires Device Administrator)
-- `Buka WhatsApp` -> Launch the selected installed application
-
-You can also configure the wake word separately. For example, with wake word `Alf`, saying `Alf buka WhatsApp` can be handled in a single recognition session when the transcript contains both wake word and command.
-
-## Voice recordings
-
-Voice samples are saved in the app-private `files/voice` directory. They are never uploaded by ALF. The saved audio is a user-owned reference/recording feature; command matching still uses speech-to-text. ALF does not claim speaker verification or biometric voice authentication.
-
-## Build locally
-
-Requirements:
-
-- JDK 17
-- Internet access for the first Gradle bootstrap/dependency download
-- Android SDK with API 35
-
-From the project root:
-
-```bash
-chmod +x ./gradlew
+```
+git clone <repo-anda>
+cd ALFVoiceControl
 ./gradlew assembleDebug
 ```
 
-The project includes `gradle/wrapper/gradle-wrapper.jar`, `gradlew`, and `gradlew.bat`. The wrapper bootstraps and caches the pinned Gradle 8.10.2 distribution when necessary. The pinned Android Gradle Plugin is 8.8.2 and the project targets SDK 35.
+Kalau `gradlew` gagal karena `gradle-wrapper.jar` belum ada (karena file biner ini
+tidak ikut dibuat secara otomatis saat aplikasi ini dibuat), jalankan sekali:
 
-APK output:
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
+```
+gradle wrapper --gradle-version 8.9 --distribution-type bin
 ```
 
-## GitHub Actions
+(butuh Gradle terinstall di komputer Anda sekali saja, setelah itu `./gradlew`
+akan berfungsi normal seterusnya untuk project ini).
 
-Workflow file:
+APK hasil build ada di: `app/build/outputs/apk/debug/app-debug.apk`
 
-```text
-.github/workflows/build.yml
+---
+
+## 4. Instalasi APK ke HP
+
+1. Salin file `.apk` ke HP Android Anda.
+2. Buka file tersebut di File Manager, izinkan "Install dari sumber tidak dikenal"
+   kalau diminta.
+3. Install seperti biasa.
+
+---
+
+## 5. Setup Permission (saat pertama kali buka app)
+
+Aplikasi akan memandu lewat onboarding, meminta permission satu per satu:
+
+1. **Microphone** (`RECORD_AUDIO`) - wajib, untuk wake word & command.
+2. **Notifications** (`POST_NOTIFICATIONS`, Android 13+) - supaya notifikasi
+   "ALF is listening" muncul wajar sesuai kebijakan Android.
+3. **Device Administrator** (opsional, hanya kalau mau pakai command "Screen Off") -
+   diaktifkan manual di halaman Settings > Device Administrator.
+4. **Battery optimization** (opsional) - supaya listening service tidak dimatikan
+   paksa oleh OEM (terutama HP seperti Infinix/Xiaomi yang agresif membatasi
+   background service).
+
+Semua permission diminta **saat fitur terkait pertama kali dipakai**, bukan
+sekaligus di awal.
+
+---
+
+## 6. Batasan penting Android (dibaca dulu sebelum pakai)
+
+- **ALF tidak pernah membobol lock screen Android.** Command "Screen On" hanya
+  membangunkan layar (via window flags resmi `FLAG_TURN_SCREEN_ON` /
+  `setTurnScreenOn`); kalau HP terkunci dengan PIN/pola/password/biometrik,
+  lock screen Android tetap muncul dan pengguna tetap harus autentikasi normal.
+- **Command "Screen Off" memakai `DevicePolicyManager.lockNow()`**, API resmi
+  Android untuk Device Administrator - bukan root, bukan exploit, bukan hidden API.
+- **ALF PIN adalah PIN milik aplikasi ini saja**, dipakai untuk melindungi
+  halaman Settings ALF. Ini **bukan pengganti** PIN/pola/password lock screen
+  Android, dan disimpan dalam bentuk hash SHA-256 + salt lewat
+  `EncryptedSharedPreferences` - tidak pernah plaintext.
+- **"Open App" tidak hardcode aplikasi tertentu.** Daftar aplikasi diambil
+  langsung dari `PackageManager` perangkat Anda, jadi command bisa dibuat untuk
+  aplikasi apa pun yang sudah terinstall.
+- **Voice matching di ALF adalah speech-to-text + fuzzy text matching**, BUKAN
+  speaker verification biometrik. Artinya ALF mencocokkan *kalimat* yang
+  diucapkan, bukan memverifikasi identitas suara Anda secara biometrik. Ini
+  dijelaskan juga di dalam UI aplikasi.
+- Beberapa versi/vendor Android bisa membatasi aplikasi membangunkan layar atau
+  menjalankan activity dari background dalam kondisi tertentu. Kalau itu terjadi,
+  ALF menampilkan status/error yang jujur - tidak berpura-pura berhasil.
+- Rekaman suara dan semua data command disimpan di penyimpanan internal privat
+  aplikasi (`filesDir/voice_samples`) dan **tidak pernah diunggah ke internet**.
+
+---
+
+## 7. Struktur Project
+
+```
+ALFVoiceControl/
+├── .github/workflows/build.yml
+├── app/
+│   ├── build.gradle.kts
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/com/alfread/alfvoicecontrol/
+│       │   ├── MainActivity.kt
+│       │   ├── AlfApplication.kt
+│       │   ├── AppContainer.kt
+│       │   ├── data/           (Room, DataStore, installed apps lookup)
+│       │   ├── voice/          (speech recognition, matcher, recorder, wake word loop)
+│       │   ├── service/        (foreground listening service, boot receiver)
+│       │   ├── screen/         (screen on/off controller + activity)
+│       │   ├── security/       (device admin receiver, PIN manager)
+│       │   ├── commands/       (command executor)
+│       │   └── ui/             (Compose screens: onboarding, home, commands, settings, pin, device admin)
+│       └── res/
+├── build.gradle.kts
+├── settings.gradle.kts
+├── gradle.properties
+├── gradlew / gradlew.bat
+└── gradle/wrapper/gradle-wrapper.properties
 ```
 
-It:
-
-1. checks out the repository;
-2. installs JDK 17;
-3. configures Android SDK;
-4. installs platform 35, platform-tools and build-tools 35.0.0;
-5. makes `gradlew` executable;
-6. runs `./gradlew assembleDebug`;
-7. uploads the debug APK as a workflow artifact.
-
-No `local.properties`, secret, Firebase project or server is required.
-
-## Install the APK
-
-Download the `ALF-Voice-Control-debug` artifact from a successful GitHub Actions run, extract the APK, then install it on the Android phone. Android may require allowing installation from the source used to open the APK.
-
-## Device Administrator setup
-
-Open:
-
-`Settings -> Device Administrator` inside ALF.
-
-Tap enable and confirm the force-lock policy. This permission is used only for the Screen Off command.
-
-To revoke it later, disable ALF in Android's device-admin settings or from the system confirmation flow.
-
-## Security notes
-
-ALF intentionally does not contain code for:
-
-- bypassing Android lock screen authentication;
-- reading Android PIN/pattern/password data;
-- exploiting Accessibility or hidden APIs to bypass security;
-- root exploits;
-- silent/unapproved microphone access;
-- hidden background behavior without a foreground-service notification.
-
-The Android system remains authoritative over the lock screen, background starts, microphone privacy controls and OEM restrictions.
+Package: `com.alfread.alfvoicecontrol`

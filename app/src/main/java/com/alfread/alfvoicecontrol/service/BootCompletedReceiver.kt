@@ -1,46 +1,31 @@
 package com.alfread.alfvoicecontrol.service
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import com.alfread.alfvoicecontrol.R
-import com.alfread.alfvoicecontrol.data.LocalStore
+import com.alfread.alfvoicecontrol.data.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
+/**
+ * Restarts the voice-listening foreground service after a reboot, but only
+ * if the user previously had voice control + background listening enabled.
+ * Respects Android's background-start restrictions on newer OS versions -
+ * if the OS refuses to start the service, that limitation is surfaced in
+ * the Home screen UI rather than silently ignored.
+ */
 class BootCompletedReceiver : BroadcastReceiver() {
+
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action !in setOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED)) return
-        val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val settings = LocalStore(context).settingsFlow.first()
-                if (settings.listeningEnabled) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        val channel = NotificationChannel(
-                            VoiceMonitoringService.CHANNEL_ID,
-                            "Voice monitoring",
-                            NotificationManager.IMPORTANCE_LOW
-                        )
-                        context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
-                    }
-                    val notification = NotificationCompat.Builder(context, VoiceMonitoringService.CHANNEL_ID)
-                        .setSmallIcon(R.drawable.ic_alf)
-                        .setContentTitle("ALF Voice Control")
-                        .setContentText("Listening was enabled before reboot. Open ALF to resume microphone monitoring.")
-                        .setAutoCancel(true)
-                        .build()
-                    runCatching { NotificationManagerCompat.from(context).notify(2002, notification) }
-                }
-            } finally {
-                pendingResult.finish()
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+
+        val appContext = context.applicationContext
+        CoroutineScope(Dispatchers.Default).launch {
+            val settings = SettingsRepository(appContext).settingsFlow.first()
+            if (settings.voiceControlEnabled && settings.backgroundListening) {
+                VoiceListeningService.start(appContext)
             }
         }
     }
