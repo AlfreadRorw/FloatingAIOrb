@@ -1,4 +1,4 @@
-name: Build ALF Voice Control APK
+name: Build ALF Voice Control
 
 on:
   push:
@@ -11,54 +11,70 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build Debug APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # IMPORTANT:
+      # Do NOT request "tools".
+      # The old Android SDK "tools" package no longer exists.
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Accept Android SDK licenses
         run: |
-          yes | sdkmanager --licenses || true
+          yes | sdkmanager --licenses > /dev/null || true
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: |
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Verify Android SDK
+      - name: Verify SDK
         run: |
-          sdkmanager --list_installed
           echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           java -version
+          sdkmanager --list_installed
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Clean
+      - name: Verify Gradle wrapper
+        run: ./gradlew --version
+
+      - name: Clean project
         run: ./gradlew clean --no-daemon
 
-      - name: Build APK
+      - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Verify APK
         run: |
-          test -f app/build/outputs/apk/debug/app-debug.apk
+          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "APK was not generated."
+            exit 1
+          fi
+
           ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
