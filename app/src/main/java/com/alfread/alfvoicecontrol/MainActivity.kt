@@ -55,7 +55,6 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Waveform
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -73,7 +72,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SmallTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -312,12 +311,12 @@ private fun AppScaffold(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            SmallTopAppBar(
+            TopAppBar(
                 title = { Text(title, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
                 },
-                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { padding ->
@@ -691,7 +690,7 @@ private fun RecordingScreen(command: VoiceCommand, onCancel: () -> Unit, onSave:
 
     AppScaffold("Voice Recording", safeCancel) {
         Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(Icons.Default.Waveform, null, modifier = Modifier.size(54.dp), tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Default.Mic, null, modifier = Modifier.size(54.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(18.dp))
             Text(command.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("\"${command.triggerPhrase}\"", color = MaterialTheme.colorScheme.onSurfaceVariant)
