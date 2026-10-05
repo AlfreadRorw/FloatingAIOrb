@@ -1,9 +1,0 @@
-<resources>
-    <style name="Theme.ALFDownloader" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans-serif</item>
-        <item name="android:windowBackground">@color/alf_bg</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
-    </style>
-</resources>
