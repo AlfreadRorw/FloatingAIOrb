@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +54,7 @@ import java.util.UUID
 
 private enum class RecordingStage { IDLE, COUNTDOWN, RECORDING, DONE }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddCommandScreen(
     existingCommandId: String?,
