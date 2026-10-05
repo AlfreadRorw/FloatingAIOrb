@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ALF Voice Control</string>
+    <string name="device_admin_description">Allows ALF Voice Control to use the Android force-lock API for the Screen Off voice command.</string>
+</resources>
