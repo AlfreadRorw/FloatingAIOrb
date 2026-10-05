@@ -1,8 +1,1 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">ALF Voice Control</string>
-    <string name="notification_channel_name">ALF Voice Listening</string>
-    <string name="notification_channel_desc">Shows when ALF is actively listening for your wake word</string>
-    <string name="notification_listening_title">ALF is listening</string>
-    <string name="notification_listening_text">Say your wake word to give a command</string>
-</resources>
+<resources><string name="app_name">ALF Launcher</string></resources>
