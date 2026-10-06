@@ -297,17 +297,31 @@ class FloatingService : Service() {
     // ================= Rekam (layar tetap bisa disentuh) =================
     private fun startRecord() {
         if (!Shell.ready()) { Shell.bind(this); toast("Hubungkan Shizuku dulu"); return }
-        if (!Touch.ok) Touch.init()
-        if (!Touch.ok) { toast("Layar sentuh tidak terbaca oleh Shizuku"); return }
+        if (!Touch.canRead) Touch.init()
+        val relay = !Touch.canRead   // cadangan: layar menangkap sentuhan lalu diteruskan
         var name = pendingName.trim().ifEmpty { "Macro ${macros.size + 1}" }
         while (macros.any { it.name == name }) name += "'"
         val land = isLand(); closePanel()
         handle?.visibility = View.GONE; dock?.visibility = View.GONE; target?.visibility = View.GONE
-        val frame = View(this).apply { background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(dp(3), T.hot) } }
-        wm.addView(frame, lp(-1, -1, touch = false)); rec = frame
         val list = mutableListOf<Act>(); val cnt = label("0 aksi", 13f, true)
-        val parser = Recorder(list) { rx, ry -> val (w, h) = portrait(); Touch.toDisp(rx, ry, rot(), w, h) }
-        parser.ignore = { x, y -> barRect.contains(x, y) }
+        val frame = View(this).apply { background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(dp(3), T.hot) } }
+        val fp = lp(-1, -1, touch = relay)
+        if (relay) {
+            var t0 = 0L; var x0 = 0f; var y0 = 0f; var lastUp = 0L
+            frame.setOnTouchListener { _, e ->
+                when (e.action) {
+                    MotionEvent.ACTION_DOWN -> { t0 = e.eventTime; x0 = e.rawX; y0 = e.rawY }
+                    MotionEvent.ACTION_UP -> {
+                        val a = Act(if (lastUp == 0L) 300 else t0 - lastUp, x0.toInt(), y0.toInt(), e.rawX.toInt(), e.rawY.toInt(), (e.eventTime - t0).coerceAtLeast(40))
+                        synchronized(list) { list.add(a) }; lastUp = e.eventTime; cnt.text = "${list.size} aksi"
+                        fp.flags = fp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE; wm.updateViewLayout(frame, fp)
+                        scope.launch { perform(a); withContext(Dispatchers.Main) { if (rec === frame) { fp.flags = fp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv(); wm.updateViewLayout(frame, fp) } } }
+                    }
+                }
+                true
+            }
+        }
+        wm.addView(frame, fp); rec = frame
         val bar = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; background = rb(T.bg, 26, true); setPadding(dp(16), dp(6), dp(8), dp(6)) }
         bar.addView(View(this).apply { background = oval(T.hot); layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { rightMargin = dp(8) } })
         bar.addView(cnt.apply { minWidth = dp(64) })
@@ -317,15 +331,19 @@ class FloatingService : Service() {
         bar.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
             val l = IntArray(2); v.getLocationOnScreen(l); barRect = Rect(l[0] - dp(24), l[1] - dp(24), l[0] + v.width + dp(24), l[1] + v.height + dp(24)) }
         wm.addView(bar, lp(-2, -2, 0, dp(36)).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL }); recBar = bar
-        try { Shell.svc?.startEvents() } catch (_: Exception) {}
-        recJob = scope.launch {
-            while (isActive) {
-                delay(40)
-                val s = try { Shell.svc?.drainEvents() } catch (e: Exception) { null } ?: continue
-                if (s.isNotEmpty()) { s.lineSequence().forEach { parser.feed(it) }; val n = synchronized(list) { list.size }; withContext(Dispatchers.Main) { cnt.text = "$n aksi" } }
+        if (!relay) {
+            val parser = Recorder(list) { rx, ry -> val (w, h) = portrait(); Touch.toDisp(rx, ry, rot(), w, h) }
+            parser.ignore = { x, y -> barRect.contains(x, y) }
+            try { Shell.svc?.startEvents() } catch (_: Exception) {}
+            recJob = scope.launch {
+                while (isActive) {
+                    delay(40)
+                    val s = try { Shell.svc?.drainEvents() } catch (e: Exception) { null } ?: continue
+                    if (s.isNotEmpty()) { s.lineSequence().forEach { parser.feed(it) }; val n = synchronized(list) { list.size }; withContext(Dispatchers.Main) { cnt.text = "$n aksi" } }
+                }
             }
-        }
-        toast("Merekam. Main seperti biasa, lalu tekan centang")
+            toast("Merekam. Main seperti biasa, lalu tekan centang")
+        } else toast("Mode cadangan: aksi dijalankan setelah jari diangkat. Lihat alasan di Beranda")
     }
     private fun finishRecord(name: String, list: MutableList<Act>, land: Boolean, save: Boolean) {
         recJob?.cancel(); try { Shell.svc?.stopEvents() } catch (_: Exception) {}

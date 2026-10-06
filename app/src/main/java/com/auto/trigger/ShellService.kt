@@ -16,25 +16,38 @@ class ShellService : IShellService.Stub() {
 
     init { probe() }
 
-    private fun probe() {
+    private var diag = ""; private var canW = false; private var canR = false
+
+    private fun scan(cmd: String): String {
+        val head = StringBuilder()
         try {
-            val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "getevent -pl 2>/dev/null"))
+            val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "$cmd 2>&1"))
             var cur = ""; var mx = 0
             p.inputStream.bufferedReader().forEachLine { l ->
+                if (head.length < 160) head.append(l.trim()).append(" / ")
+                val t = l.trim()
                 if (l.startsWith("add device")) { cur = l.substringAfter(": ").trim(); mx = 0 }
-                else if (l.contains("ABS_MT_POSITION_X")) mx = Regex("max (\\d+)").find(l)?.groupValues?.get(1)?.toInt() ?: 0
-                else if (l.contains("ABS_MT_POSITION_Y") && path.isEmpty() && mx > 0) {
+                else if (l.contains("ABS_MT_POSITION_X") || t.startsWith("0035 ")) mx = Regex("max (\\d+)").find(l)?.groupValues?.get(1)?.toInt() ?: 0
+                else if ((l.contains("ABS_MT_POSITION_Y") || t.startsWith("0036 ")) && path.isEmpty() && mx > 0) {
                     val my = Regex("max (\\d+)").find(l)?.groupValues?.get(1)?.toInt() ?: 0
                     if (my > 0) { path = cur; maxX = mx; maxY = my }
                 }
             }
-            if (path.isNotEmpty()) out = FileOutputStream(path)
-        } catch (e: Exception) { out = null }
+        } catch (e: Exception) { diag += "scan: ${e.message}; " }
+        return head.toString()
+    }
+
+    private fun probe() {
+        var h = scan("getevent -pl")
+        if (path.isEmpty()) h += scan("getevent -p")
+        if (path.isEmpty()) { diag += "layar MT tidak ketemu: ${h.take(140)}"; return }
+        try { out = FileOutputStream(path); canW = true } catch (e: Exception) { diag += "tulis: ${e.message}; " }
+        try { FileInputStream(path).close(); canR = true } catch (e: Exception) { diag += "baca: ${e.message}; " }
     }
 
     override fun destroy() { System.exit(0) }
     override fun exec(cmd: String): Int = try { Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd)).waitFor() } catch (e: Exception) { -1 }
-    override fun info(): String = if (out == null) "" else "$path,$maxX,$maxY"
+    override fun info(): String = "$path,$maxX,$maxY,${if (canW) 1 else 0},${if (canR) 1 else 0},${diag.replace("\n", " ")}"
 
     override fun inj(action: Int, x: Int, y: Int): Boolean {
         val o = out ?: return false
@@ -53,7 +66,7 @@ class ShellService : IShellService.Stub() {
 
     override fun startEvents() {
         stopEvents(); synchronized(evBuf) { evBuf.setLength(0) }
-        if (path.isEmpty()) return
+        if (!canR) return
         val s = FileInputStream(path); inp = s
         Thread {
             try {

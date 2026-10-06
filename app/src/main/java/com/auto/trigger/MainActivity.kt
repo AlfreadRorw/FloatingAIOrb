@@ -73,6 +73,7 @@ class MainActivity : Activity() {
     }
 
     private fun home(b: LinearLayout) {
+        if (Shell.ready()) Touch.init()
         val on = svc() != null
         title(b, "AUTO TRIGGER", if (on) "Smart Panel aktif" else "Siap digunakan")
         val hero = ImageView(this).apply {
@@ -90,7 +91,7 @@ class MainActivity : Activity() {
             try { if (Shizuku.pingBinder()) Shizuku.requestPermission(0) else toast("Start Shizuku dulu") } catch (e: Throwable) { toast("Shizuku belum terpasang") } })
         b.addView(statusRow("Tampil di atas app", if (Settings.canDrawOverlays(this)) "Diizinkan" else "Diperlukan untuk panel & ikon", Settings.canDrawOverlays(this), "Izinkan") {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) })
-        b.addView(statusRow("Sentuhan langsung", if (Touch.ok) "Aktif: presisi tinggi, bisa rekam sambil main" else "Belum aktif (butuh Shizuku). Mode cadangan: input", Touch.ok, null) {})
+        b.addView(statusRow("Sentuhan langsung", if (Touch.ok && Touch.canRead) "Aktif penuh: rekam sambil main + suntik langsung" else if (!Shell.ready()) "Shizuku belum terhubung" else "Mode cadangan. Baca: ${if (Touch.canRead) "ya" else "tidak"}, Tulis: ${if (Touch.ok) "ya" else "tidak"}. ${Touch.diag}", Touch.ok && Touch.canRead, null) {})
         val ign = (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
         b.addView(statusRow("Anti dimatikan sistem", if (ign) "Hemat baterai dimatikan untuk app ini" else "Matikan hemat baterai agar panel awet", ign, "Atur") {
             startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) })

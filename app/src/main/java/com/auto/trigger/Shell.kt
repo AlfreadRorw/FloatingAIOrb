@@ -18,7 +18,7 @@ object Shell {
         val args = Shizuku.UserServiceArgs(ComponentName(ctx.packageName, ShellService::class.java.name)).daemon(false).processNameSuffix("shell").version(2)
         Shizuku.bindUserService(args, object : ServiceConnection {
             override fun onServiceConnected(n: ComponentName?, b: IBinder?) { svc = IShellService.Stub.asInterface(b); binding = false; Thread { Touch.init() }.start() }
-            override fun onServiceDisconnected(n: ComponentName?) { svc = null; binding = false; Touch.ok = false }
+            override fun onServiceDisconnected(n: ComponentName?) { svc = null; binding = false; Touch.ok = false; Touch.canRead = false }
         })
     }
     fun run(cmd: String) { try { svc?.exec(cmd) } catch (_: Exception) {} }
@@ -26,11 +26,18 @@ object Shell {
 }
 
 object Touch {
-    @Volatile var ok = false
+    @Volatile var ok = false          // bisa menyuntik sentuhan langsung
+    @Volatile var canRead = false     // bisa membaca sentuhan mentah (rekam tanpa blokir layar)
+    @Volatile var diag = ""
     var maxX = 1; var maxY = 1
     fun init() {
-        try { val p = (Shell.svc?.info() ?: "").split(','); if (p.size == 3) { maxX = p[1].toInt(); maxY = p[2].toInt(); ok = true } else ok = false }
-        catch (e: Exception) { ok = false }
+        try {
+            val p = (Shell.svc?.info() ?: "").split(',', limit = 6)
+            if (p.size >= 5) {
+                maxX = p[1].toIntOrNull() ?: 1; maxY = p[2].toIntOrNull() ?: 1
+                ok = p[3] == "1" && maxX > 1; canRead = p[4] == "1" && maxX > 1; diag = p.getOrElse(5) { "" }
+            } else { ok = false; canRead = false; diag = "service Shizuku lama / info kosong. Force stop app lalu buka lagi" }
+        } catch (e: Exception) { ok = false; canRead = false; diag = "info() gagal: ${e.javaClass.simpleName} ${e.message}" }
     }
     // raw panel (portrait) <-> koordinat layar sesuai rotasi. w,h = ukuran portrait
     fun toDisp(rx: Int, ry: Int, rot: Int, w: Int, h: Int): Pair<Int, Int> {
