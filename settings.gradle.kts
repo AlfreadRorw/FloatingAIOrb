@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "ALF-Launcher"
+rootProject.name = "ALF-Auto-Trigger"
 include(":app")
