@@ -17,7 +17,7 @@ object S {
     var hW by P("hw", 6)
     var hAlpha by P("halpha", 80)
     var haptic by P("haptic", 1)
-    var speed by P("speed", 100)
+    var speed by P("speed", 100)      // 10 = 0.10x, 100 = 1.00x, 300 = 3.00x
     var dock by P("dock", 1)
     var countdown by P("cd", 0)
     var iconSize by P("isz", 48)
@@ -27,6 +27,7 @@ object S {
     var jitterT by P("jitt", 0)
     var autoStop by P("astop", 0)
     var cps by P("cps", 12)
+    var gameProfile by P("game_profile", 0) // 0 normal, 1 ML/game, 2 stealth
     var iconAlpha by P("ialpha", 100)
     var hx by P("hx", 0)
     var hy by P("hy", 600)

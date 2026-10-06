@@ -119,11 +119,19 @@ class MainActivity : Activity() {
         ms.forEach { m ->
             val c = card()
             c.addView(label(m.name, 17f, true).apply { setOnClickListener { rename(m, ms) } })
-            c.addView(label("${m.acts.size} aksi  |  ${if (m.land) "landscape" else "portrait"}  |  ${if (m.pinned) "ikon di layar" else "ikon disembunyikan"}  |  ketuk nama untuk ganti", 11f, false, T.sub))
-            val r = LinearLayout(this).apply { setPadding(0, dp(10), 0, dp(4)) }
+            c.addView(label("${m.acts.size} aksi  |  ${if (m.land) "landscape" else "portrait"}  |  ${if (m.pinned) "ikon di layar" else "ikon disembunyikan"}", 11f, false, T.sub))
+            val customize = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, dp(2)) }
+            customize.addView(label("Ikon:", 11f, false, T.sub))
+            customize.addView(icon(m.iconRes, T.fg, 38, T.bg) { chooseMacroIcon(m, ms) })
+            customize.addView(label("  Kecepatan global: ${String.format(java.util.Locale.US, "%.2fx", S.speed / 100.0)}", 11f, false, T.sub).apply {
+                layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+            })
+            c.addView(customize)
+
+            val r = LinearLayout(this).apply { setPadding(0, dp(6), 0, dp(4)) }
             r.addView(icon(R.drawable.ic_play, T.bg, 42, T.fg) { svc()?.runByName(m.name) ?: toast("Aktifkan Smart Panel dulu") })
             r.addView(icon(R.drawable.ic_pin, if (m.pinned) T.hot else T.fg, 42, T.bg) { m.pinned = !m.pinned; commit(ms) })
-            r.addView(icon(R.drawable.ic_copy, T.fg, 42, T.bg) { var n = m.name + "2"; while (ms.any { it.name == n }) n += "'"; ms.add(Macro(n, m.acts.toMutableList(), m.loops, m.gap, false, m.land)); commit(ms) })
+            r.addView(icon(R.drawable.ic_copy, T.fg, 42, T.bg) { var n = m.name + "2"; while (ms.any { it.name == n }) n += "'"; ms.add(Macro(n, m.acts.toMutableList(), m.loops, m.gap, false, m.land, m.iconRes)); commit(ms) })
             r.addView(icon(R.drawable.ic_delete, T.fg, 42, T.bg) { ms.remove(m); commit(ms) })
             c.addView(r)
             c.addView(stepper("Ulangi (0 = tanpa henti)", m.loops, 0, 999, 1, "x", { m.loops = it }) { commit(ms) })
@@ -131,6 +139,25 @@ class MainActivity : Activity() {
             b.addView(c)
         }
     }
+    private fun chooseMacroIcon(m: Macro, ms: List<Macro>) {
+        val names = arrayOf("Bolt", "Target", "Play", "Game", "Timer", "Record", "Grid", "Home", "Loop", "Settings", "Pin", "Check")
+        val ids = intArrayOf(
+            R.drawable.ic_bolt, R.drawable.ic_target, R.drawable.ic_play, R.drawable.ic_gamepad,
+            R.drawable.ic_timer, R.drawable.ic_rec, R.drawable.ic_grid, R.drawable.ic_home,
+            R.drawable.ic_loop, R.drawable.ic_settings, R.drawable.ic_pin, R.drawable.ic_check
+        )
+        val checked = ids.indexOf(m.iconRes).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("Pilih ikon macro")
+            .setSingleChoiceItems(names, checked) { d, which ->
+                m.iconRes = ids[which]
+                commit(ms)
+                d.dismiss()
+            }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
     private fun rename(m: Macro, ms: List<Macro>) {
         val et = EditText(this).apply { setText(m.name); setSingleLine() }
         AlertDialog.Builder(this).setTitle("Ganti nama").setView(et).setPositiveButton("Simpan") { _, _ ->
@@ -155,7 +182,15 @@ class MainActivity : Activity() {
         b.addView(c2)
         sec(b, "EKSEKUSI MACRO")
         val c3 = card()
-        c3.addView(stepper("Kecepatan macro", S.speed, 50, 300, 25, "%", { S.speed = it }) { render() })
+        c3.addView(label("Kecepatan live. Bisa diubah saat macro sedang berjalan dari panel.", 11f, false, T.sub))
+        c3.addView(stepper("Kecepatan macro", S.speed, 10, 300, 10, "%", { S.speed = it }) { render() })
+        val speedScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val sr = LinearLayout(this)
+        listOf(10 to "0.10x", 25 to "0.25x", 50 to "0.50x", 75 to "0.75x", 100 to "1x", 150 to "1.5x", 200 to "2x", 300 to "3x").forEach { (v, t) ->
+            sr.addView(chip(t, S.speed == v) { S.speed = v; svc()?.setSpeed(v); render() })
+        }
+        speedScroll.addView(sr)
+        c3.addView(speedScroll)
         c3.addView(stepper("Variasi posisi acak", S.jitter, 0, 25, 1, "px", { S.jitter = it }) { render() })
         c3.addView(stepper("Variasi waktu acak", S.jitterT, 0, 40, 5, "%", { S.jitterT = it }) { render() })
         c3.addView(stepper("Hitung mundur mulai", S.countdown, 0, 10, 1, "s", { S.countdown = it }) { render() })
@@ -184,6 +219,6 @@ class MainActivity : Activity() {
         p.addView(stepper("Opacity ikon bulat", S.iconAlpha, 30, 100, 10, "%", { S.iconAlpha = it }) { live() })
         p.addView(toggle("Dock bar melayang", S.dock == 1, { S.dock = it }) { live() })
         p.addView(toggle("Getar haptic", S.haptic == 1, { S.haptic = it }) { live() }); b.addView(p)
-        b.addView(label("Auto Trigger v1.0", 11f, false, T.sub).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0) })
+        b.addView(label("Auto Trigger v2.0", 11f, false, T.sub).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0) })
     }
 }

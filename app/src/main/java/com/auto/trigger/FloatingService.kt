@@ -29,6 +29,7 @@ class FloatingService : Service() {
     private var rec: View? = null; private var recBar: View? = null; private var recJob: Job? = null
     private var barRect = Rect()
     private var target: View? = null; private var tp: WindowManager.LayoutParams? = null; private var clicker: Job? = null
+    private var iconPicker: View? = null
     private var pendingName = ""; private var lastRun: String? = null
     private lateinit var hp: WindowManager.LayoutParams
 
@@ -41,6 +42,28 @@ class FloatingService : Service() {
     private fun portrait() = real().let { minOf(it.x, it.y) to maxOf(it.x, it.y) }
     private fun isLand() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
+    private val iconOptions by lazy {
+        listOf(
+            "Bolt" to R.drawable.ic_bolt,
+            "Target" to R.drawable.ic_target,
+            "Play" to R.drawable.ic_play,
+            "Game" to R.drawable.ic_gamepad,
+            "Timer" to R.drawable.ic_timer,
+            "Record" to R.drawable.ic_rec,
+            "Grid" to R.drawable.ic_grid,
+            "Home" to R.drawable.ic_home,
+            "Loop" to R.drawable.ic_loop,
+            "Settings" to R.drawable.ic_settings,
+            "Pin" to R.drawable.ic_pin,
+            "Check" to R.drawable.ic_check
+        )
+    }
+    private fun speedLabel(pct: Int = S.speed): String = String.format(java.util.Locale.US, "%.2fx", pct / 100.0)
+    private fun scaledTime(ms: Long): Long = (ms * 100.0 / S.speed.coerceIn(10, 300)).toLong().coerceAtLeast(1L)
+    fun setSpeed(pct: Int) { S.speed = pct.coerceIn(10, 300); refreshRun(); panel?.let { openPanel() } }
+    fun boostSpeed(multiplier: Double) = setSpeed((multiplier * 100.0).toInt())
+    fun pauseAll() { runners.values.forEach { if (it.job?.isActive == true) it.paused = true }; refreshRun(); toast("Semua macro dijeda") }
+    fun resumeAll() { runners.values.forEach { if (it.job?.isActive == true) it.paused = false }; refreshRun(); toast("Semua macro dilanjutkan") }
 
     private fun lp(w: Int, h: Int, x: Int = 0, y: Int = 0, focus: Boolean = false, touch: Boolean = true) = WindowManager.LayoutParams(w, h,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -121,44 +144,234 @@ class FloatingService : Service() {
 
     private fun openPanel() {
         closePanel()
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(12), dp(12), dp(12)) }
+
+        fun speedChip(pct: Int, title: String = speedLabel(pct)) =
+            chip(title, S.speed == pct) { S.speed = pct; openPanel(); refreshRun() }
+
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+
         val head = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        head.addView(label("AUTO TRIGGER", 12f, true).apply { letterSpacing = 0.15f; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+        head.addView(label("AUTO TRIGGER", 12f, true).apply {
+            letterSpacing = 0.15f
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        })
+        head.addView(label(speedLabel(), 11f, true, T.green).apply {
+            gravity = Gravity.CENTER
+            background = rb(T.card, 12)
+            setPadding(dp(9), dp(6), dp(9), dp(6))
+            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(4) }
+        })
         head.addView(icon(R.drawable.ic_settings, T.fg, 32) { openApp() })
         head.addView(icon(R.drawable.ic_close, T.fg, 32) { closePanel() })
         col.addView(head)
-        val nameRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(10), 0, dp(4)) }
+
+        if (runners.isNotEmpty()) {
+            val active = card(10).apply {
+                background = rb(T.card, 16, true)
+            }
+            active.addView(label("SEDANG BERJALAN", 10f, true, T.sub))
+            val count = runners.values.count { it.job?.isActive == true }
+            active.addView(label("$count macro aktif  •  kecepatan ${speedLabel()}", 12f, true))
+            val q = LinearLayout(this)
+            q.addView(chip("Lanjut", false) { resumeAll(); openPanel() })
+            q.addView(chip("Jeda semua", false) { pauseAll(); openPanel() })
+            q.addView(chip("Stop semua", false) { stopAll(); openPanel() })
+            active.addView(q)
+            col.addView(active)
+        }
+
+        col.addView(label("KECEPATAN LIVE", 10f, true, T.sub).apply {
+            letterSpacing = 0.14f
+            setPadding(dp(2), dp(8), 0, dp(4))
+        })
+
+        val speedScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val speedRow = LinearLayout(this)
+        listOf(10 to "0.10x", 25 to "0.25x", 50 to "0.50x", 75 to "0.75x", 100 to "1.00x",
+            125 to "1.25x", 150 to "1.50x", 200 to "2.00x", 300 to "3.00x").forEach { (p, title) ->
+            speedRow.addView(speedChip(p, title))
+        }
+        speedScroll.addView(speedRow)
+        col.addView(speedScroll)
+
+        val speedTools = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        speedTools.addView(label("Presisi timing", 11f, false, T.sub).apply {
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        })
+        speedTools.addView(chip("0.35x", false) { S.speed = 35; openPanel() })
+        speedTools.addView(chip("1x", false) { S.speed = 100; openPanel() })
+        speedTools.addView(chip("2x", false) { S.speed = 200; openPanel() })
+        speedTools.addView(chip("3x", false) { S.speed = 300; openPanel() })
+        col.addView(speedTools)
+
+        val quick = card(10).apply {
+            background = rb(T.card, 16)
+        }
+        quick.addView(label("AKSI CEPAT", 10f, true, T.sub))
+        val qr1 = LinearLayout(this)
+        qr1.addView(chip("Play terakhir", false) {
+            (macros.find { it.name == lastRun } ?: macros.firstOrNull())?.let { toggleRun(it) } ?: toast("Belum ada macro")
+            openPanel()
+        })
+        qr1.addView(chip("Target tap", false) { toggleTarget(); openPanel() })
+        qr1.addView(chip("Rekam baru", false) { startRecord() })
+        quick.addView(qr1)
+        val qr2 = LinearLayout(this)
+        qr2.addView(chip("Mode ML", false) {
+            S.gameProfile = 1
+            S.hAlpha = 25; S.hW = 3; S.hLen = 64; S.iconAlpha = 55; S.iconSize = 42; S.haptic = 0; S.dock = 0; S.alpha = 88
+            rebuildAll()
+        })
+        qr2.addView(chip("Normal", false) {
+            S.gameProfile = 0
+            S.hAlpha = 80; S.hW = 6; S.hLen = 90; S.iconAlpha = 100; S.iconSize = 48; S.haptic = 1; S.dock = 1; S.alpha = 95
+            rebuildAll()
+        })
+        quick.addView(qr2)
+        col.addView(quick)
+
+        val nameRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, dp(4)) }
         val et = EditText(this).apply {
-            hint = "Nama trigger baru"; setText(pendingName); setSingleLine(); textSize = 14f; setTextColor(T.fg); setHintTextColor(T.sub)
-            background = rb(T.card, 14); setPadding(dp(14), dp(10), dp(14), dp(10)); layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
-            doAfterTextChanged { pendingName = it.toString() } }
+            hint = "Nama trigger baru"
+            setText(pendingName)
+            setSingleLine()
+            textSize = 14f
+            setTextColor(T.fg)
+            setHintTextColor(T.sub)
+            background = rb(T.card, 14)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+            doAfterTextChanged { pendingName = it.toString() }
+        }
         nameRow.addView(et)
         nameRow.addView(icon(R.drawable.ic_rec, Color.WHITE, 46, T.hot) {
-            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(et.windowToken, 0); startRecord() })
+            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(et.windowToken, 0)
+            startRecord()
+        })
         col.addView(nameRow)
+
         if (!Shell.ready()) col.addView(label("Shizuku belum terhubung", 11f, false, T.hot))
-        if (macros.isEmpty()) col.addView(label("Isi nama, tekan rekam, lakukan aksi di layar, lalu simpan.", 11f, false, T.sub).apply { setPadding(0, dp(8), 0, 0) })
+        if (macros.isEmpty()) {
+            col.addView(label("Isi nama, tekan rekam, lakukan aksi di layar, lalu simpan.", 11f, false, T.sub).apply {
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
+
         macros.toList().forEach { m ->
             val r = runners[m.name]
-            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; background = rb(T.card, 14); setPadding(dp(8), dp(8), dp(8), dp(8))
-                layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) } }
-            row.addView(icon(if (r != null && !r.paused) R.drawable.ic_pause else R.drawable.ic_play, if (r == null) T.bg else Color.WHITE, 40, if (r == null) T.fg else if (r.paused) T.orange else T.green) { toggleRun(m); openPanel() })
-            val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), 0, dp(4), 0); layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
-            info.addView(label(m.name, 14f, true)); info.addView(label("${m.acts.size} aksi  |  ${if (m.loops == 0) "∞" else "${m.loops}x"}", 11f, false, T.sub))
+            val row = LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                background = rb(T.card, 14)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
+            }
+
+            row.addView(icon(
+                if (r != null && !r.paused) R.drawable.ic_pause else R.drawable.ic_play,
+                if (r == null) T.bg else Color.WHITE, 40,
+                if (r == null) T.fg else if (r.paused) T.orange else T.green
+            ) { toggleRun(m); openPanel() })
+
+            val info = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(8), 0, dp(4), 0)
+                layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+            }
+            info.addView(label(m.name, 14f, true))
+            info.addView(label("${m.acts.size} aksi  •  ${if (m.loops == 0) "∞" else "${m.loops}x"}  •  ${if (m.land) "landscape" else "portrait"}", 10f, false, T.sub))
             row.addView(info)
-            row.addView(icon(R.drawable.ic_pin, if (m.pinned) T.hot else T.fg, 34, T.bg) { m.pinned = !m.pinned; if (m.pinned) addIcon(m) else removeIcon(m.name); Store.save(this, macros); openPanel() })
-            row.addView(icon(R.drawable.ic_delete, T.fg, 34, T.bg) { stopRun(m.name); removeIcon(m.name); macros.remove(m); Store.save(this, macros); openPanel() })
+
+            row.addView(icon(m.iconRes, T.fg, 34, T.bg) { chooseIcon(m) })
+            row.addView(icon(R.drawable.ic_pin, if (m.pinned) T.hot else T.fg, 34, T.bg) {
+                m.pinned = !m.pinned
+                if (m.pinned) addIcon(m) else removeIcon(m.name)
+                Store.save(this, macros)
+                openPanel()
+            })
+            row.addView(icon(R.drawable.ic_delete, T.fg, 34, T.bg) {
+                stopRun(m.name); removeIcon(m.name); macros.remove(m); Store.save(this, macros); openPanel()
+            })
             col.addView(row)
         }
-        val pw = dp(320)
+
+        val pw = dp(340)
         col.measure(View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED)
-        val ph = minOf(col.measuredHeight, sh * 7 / 10)
+        val ph = minOf(col.measuredHeight, sh * 8 / 10)
         val px = if (hp.x < sw / 2) hp.width + dp(4) else sw - pw - hp.width - dp(4)
         val py = minOf(hp.y, sh - ph - dp(30)).coerceAtLeast(dp(20))
-        val sv = ScrollView(this).apply { addView(col); background = rb(T.bgA(), 22, true); alpha = 0f; scaleX = .94f; scaleY = .94f }
-        wm.addView(sv, lp(pw, ph, px, py, focus = true)); panel = sv
+        val sv = ScrollView(this).apply {
+            addView(col)
+            background = rb(T.bgA(), 22, true)
+            alpha = 0f
+            scaleX = .94f
+            scaleY = .94f
+        }
+        wm.addView(sv, lp(pw, ph, px, py, focus = true))
+        panel = sv
         sv.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150).start()
     }
+
+    private fun chooseIcon(m: Macro) {
+        iconPicker?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        iconPicker = null
+
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = rb(T.bgA(), 20, true)
+        }
+        val head = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        head.addView(label("Pilih ikon", 14f, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+        head.addView(icon(R.drawable.ic_close, T.fg, 34) {
+            try { iconPicker?.let { wm.removeView(it) } } catch (_: Exception) {}
+            iconPicker = null
+            openPanel()
+        })
+        box.addView(head)
+        box.addView(label(m.name, 10f, false, T.sub).apply { setPadding(0, 0, 0, dp(8)) })
+
+        val grid = GridLayout(this).apply {
+            columnCount = 4
+            rowCount = (iconOptions.size + 3) / 4
+        }
+        iconOptions.forEach { (name, res) ->
+            val selected = m.iconRes == res
+            val holder = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+                layoutParams = GridLayout.LayoutParams().apply {
+                    width = dp(58); height = dp(62)
+                }
+            }
+            holder.addView(icon(res, if (selected) T.bg else T.fg, 42, if (selected) T.green else T.card) {
+                m.iconRes = res
+                Store.save(this, macros)
+                if (m.pinned) {
+                    removeIcon(m.name)
+                    addIcon(m)
+                }
+                try { iconPicker?.let { wm.removeView(it) } } catch (_: Exception) {}
+                iconPicker = null
+                openPanel()
+            })
+            holder.addView(label(name, 8f, selected, if (selected) T.green else T.sub))
+            grid.addView(holder)
+        }
+        box.addView(grid)
+
+        val w = dp(270)
+        val h = minOf(dp(340), sh - dp(80))
+        val p = lp(w, h, (sw - w) / 2, (sh - h) / 2)
+        wm.addView(box, p)
+        iconPicker = box
+    }
+
 
     // ================= Dock bar =================
     private fun buildDock() {
@@ -200,11 +413,11 @@ class FloatingService : Service() {
                     while (r.idx < m.acts.size && isActive && !over()) {
                         while (r.paused && isActive) delay(60)
                         val a = m.acts[r.idx]
-                        delay(jt(a.delay * 100 / S.speed))
+                        delay(jt(scaledTime(a.delay)))
                         while (r.paused && isActive) delay(60)
                         perform(a); r.idx++
                     }
-                    if (r.idx >= m.acts.size) { r.idx = 0; r.loop++; withContext(Dispatchers.Main) { refreshRun() }; delay(jt(m.gap * 100 / S.speed)) }
+                    if (r.idx >= m.acts.size) { r.idx = 0; r.loop++; withContext(Dispatchers.Main) { refreshRun() }; delay(jt(scaledTime(m.gap))) }
                 }
             } finally { withContext(NonCancellable + Dispatchers.Main) { if (runners[m.name] === r) runners.remove(m.name); refreshRun() } }
         }
@@ -216,14 +429,15 @@ class FloatingService : Service() {
         fun r() = if (j == 0) 0 else Random.nextInt(-j, j + 1)
         val x1 = a.x1 + r(); val y1 = a.y1 + r(); val x2 = a.x2 + r(); val y2 = a.y2 + r()
         val moved = abs(a.x1 - a.x2) > 8 || abs(a.y1 - a.y2) > 8
-        if (!Touch.ok) { Shell.run(if (!moved && a.dur < 200) "input tap $x1 $y1" else "input swipe $x1 $y1 $x2 $y2 ${a.dur}"); delay(a.dur); return }
+        val dur = scaledTime(a.dur)
+        if (!Touch.ok) { Shell.run(if (!moved && dur < 200) "input tap $x1 $y1" else "input swipe $x1 $y1 $x2 $y2 $dur"); delay(dur); return }
         val rt = rot(); val (w, h) = portrait()
         val (ax, ay) = Touch.toRaw(x1, y1, rt, w, h); val (bx, by) = Touch.toRaw(x2, y2, rt, w, h)
         try {
             Shell.inj(0, ax, ay)
-            if (!moved) delay(a.dur.coerceAtLeast(30)) else {
-                val steps = (a.dur / 16).toInt().coerceAtLeast(2)
-                for (i in 1..steps) { delay(a.dur / steps); Shell.inj(1, ax + (bx - ax) * i / steps, ay + (by - ay) * i / steps) }
+            if (!moved) delay(dur.coerceAtLeast(12)) else {
+                val steps = (dur / 8).toInt().coerceAtLeast(2)
+                for (i in 1..steps) { delay(dur / steps); Shell.inj(1, ax + (bx - ax) * i / steps, ay + (by - ay) * i / steps) }
             }
         } finally { Shell.inj(2, 0, 0) }
     }
@@ -234,7 +448,7 @@ class FloatingService : Service() {
         icons.forEach { (n, box) ->
             val r = runners[n]; val m = macros.find { it.name == n }
             val img = (box as LinearLayout).getChildAt(0) as ImageView; val tv = box.getChildAt(1) as TextView
-            img.setImageResource(if (r == null) R.drawable.ic_bolt else if (r.paused) R.drawable.ic_play else R.drawable.ic_pause)
+            img.setImageResource(if (r == null) (m?.iconRes ?: R.drawable.ic_bolt) else if (r.paused) R.drawable.ic_play else R.drawable.ic_pause)
             img.setColorFilter(if (r == null) T.bg else Color.WHITE)
             (img.background as GradientDrawable).setColor(if (r == null) T.fg else if (r.paused) T.orange else T.green)
             tv.text = if (r == null) n else "${r.loop + 1}/${if (m?.loops == 0) "∞" else "${m?.loops}"}"
@@ -246,7 +460,7 @@ class FloatingService : Service() {
         if (icons.containsKey(m.name)) return
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; alpha = S.iconAlpha / 100f }
         val img = ImageView(this).apply {
-            setImageResource(R.drawable.ic_bolt); setColorFilter(T.bg); val pd = dp(S.iconSize / 4); setPadding(pd, pd, pd, pd)
+            setImageResource(m.iconRes); setColorFilter(T.bg); val pd = dp(S.iconSize / 4); setPadding(pd, pd, pd, pd)
             background = oval(T.fg).apply { setStroke(dp(2), T.bg) }; layoutParams = LinearLayout.LayoutParams(dp(S.iconSize), dp(S.iconSize)) }
         box.addView(img); box.addView(label(m.name, 9f, true).apply { setShadowLayer(6f, 0f, 0f, T.bg) })
         val slot = icons.size
@@ -352,13 +566,13 @@ class FloatingService : Service() {
         if (!save) return
         val acts = synchronized(list) { list.toMutableList() }
         if (acts.isEmpty()) { toast("Belum ada aksi terekam"); return }
-        val m = Macro(name, acts, 1, 500, true, land); macros.add(m); Store.save(this, macros); pendingName = ""
+        val m = Macro(name, acts, 1, 500, true, land, R.drawable.ic_bolt); macros.add(m); Store.save(this, macros); pendingName = ""
         addIcon(m); toast("Tersimpan: $name. Tap ikon bulat untuk jalan")
     }
 
     override fun onDestroy() {
         inst = null; scope.cancel(); stopClicker(); recJob?.cancel()
-        listOf(rec, recBar, panel, dock, target, handle).forEach { v -> v?.let { try { wm.removeView(it) } catch (_: Exception) {} } }
+        listOf(rec, recBar, panel, dock, target, handle, iconPicker).forEach { v -> v?.let { try { wm.removeView(it) } catch (_: Exception) {} } }
         icons.keys.toList().forEach { removeIcon(it) }; super.onDestroy()
     }
 }
