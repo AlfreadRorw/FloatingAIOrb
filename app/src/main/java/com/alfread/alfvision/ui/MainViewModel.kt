@@ -11,6 +11,7 @@ import com.alfread.alfvision.data.local.RegionPresetEntity
 import com.alfread.alfvision.service.FloatingPanelService
 import com.alfread.alfvision.service.ScreenCaptureService
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -28,25 +29,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
 
     val conversations: StateFlow<List<ConversationEntity>> =
-        c.historyRepository.observeConversations().stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = emptyList()
-        )
+        c.historyRepository.observeConversations()
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList()
+            )
 
     val regions: StateFlow<List<RegionPresetEntity>> =
-        c.regionRepository.observe().stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = emptyList()
-        )
+        c.regionRepository.observe()
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList()
+            )
 
     val profiles =
-        c.profileRepository.observe().stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = emptyList()
-        )
+        c.profileRepository.observe()
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList()
+            )
 
     val session = c.sessionStore
     val network = c.networkMonitor.connected

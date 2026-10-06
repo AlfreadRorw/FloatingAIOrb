@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.first
 
 class AppContainer(context: Context) {
     val appContext = context.applicationContext
-    val database: AppDatabase = Room.databaseBuilder(appContext, AppDatabase::class.java, "alf_vision.db").build()
+    val database: AppDatabase = Room.databaseBuilder(appContext, AppDatabase::class.java, "alf_vision.db")
+        .fallbackToDestructiveMigration()
+        .build()
     val secureStore = SecureStore(appContext)
     val settingsRepository = SettingsRepository(appContext, database.appSettingsDao())
     val historyRepository = HistoryRepository(database)
@@ -57,12 +59,21 @@ class AppContainer(context: Context) {
 
     init {
         scope.launch {
-            profileRepository.ensureDefaults()
-            val initial = settingsRepository.flow.first()
-            if (initial.autoDeleteDays > 0) historyRepository.deleteOlderThan(System.currentTimeMillis() - initial.autoDeleteDays * 86_400_000L)
-            settingsRepository.flow.collect { value ->
-                settingsSnapshotTimeout = value.networkTimeoutSeconds
-                settingsSnapshotRetry = value.retryCount
+            runCatching {
+                profileRepository.ensureDefaults()
+                val initial = settingsRepository.flow.first()
+                if (initial.autoDeleteDays > 0) {
+                    historyRepository.deleteOlderThan(
+                        System.currentTimeMillis() - initial.autoDeleteDays * 86_400_000L
+                    )
+                }
+            }
+
+            runCatching {
+                settingsRepository.flow.collect { value ->
+                    settingsSnapshotTimeout = value.networkTimeoutSeconds
+                    settingsSnapshotRetry = value.retryCount
+                }
             }
         }
     }

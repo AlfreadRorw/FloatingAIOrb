@@ -9,6 +9,7 @@ import com.alfread.alfvision.data.local.AppSettingsEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.catch
 
 private val Context.alfSettingsDataStore by preferencesDataStore("alf_settings")
 
@@ -49,7 +50,8 @@ class SettingsRepository(private val context: Context, private val dao: AppSetti
         val panelY = intPreferencesKey("panel_y")
     }
 
-    val flow: Flow<AppSettings> = context.alfSettingsDataStore.data.map { p ->
+    val flow: Flow<AppSettings> = context.alfSettingsDataStore.data
+        .map { p ->
         AppSettings(
             theme = enumOrDefault(p[K.theme], ThemeMode.SYSTEM),
             accent = enumOrDefault(p[K.accent], Accent.PURPLE),
@@ -89,7 +91,8 @@ class SettingsRepository(private val context: Context, private val dao: AppSetti
                 y = p[K.panelY] ?: 140
             )
         )
-    }
+        }
+        .catch { emit(AppSettings()) }
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         val current = flow.first()
