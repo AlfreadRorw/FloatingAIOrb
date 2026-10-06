@@ -94,8 +94,8 @@ class MainActivity : ComponentActivity() {
                     ElevatedCard(colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF101217))) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("Vision model", color = Color.White, fontSize = 18.sp)
-                            ModelChoice(model, "qwen/qwen3.8-27b") { selected -> model = selected; AppPrefs.setModel(this@MainActivity, selected) }
-                            ModelChoice(model, "qwen/qwen3.6-27b") { selected -> model = selected; AppPrefs.setModel(this@MainActivity, selected) }
+                            ModelChoice(model, "qwen/qwen3.8-27b") { model = "qwen/qwen3.8-27b"; AppPrefs.setModel(this@MainActivity, model) }
+                            ModelChoice(model, "qwen/qwen3.6-27b") { model = "qwen/qwen3.6-27b"; AppPrefs.setModel(this@MainActivity, model) }
                         }
                     }
                 }
