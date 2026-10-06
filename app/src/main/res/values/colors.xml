@@ -1,6 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#000000</color>
-    <color name="white">#FFFFFF</color>
-    <color name="purple">#8B5CF6</color>
+    <color name="alf_black">#07080A</color>
+    <color name="alf_panel">#101217</color>
+    <color name="alf_surface">#171A21</color>
+    <color name="alf_accent">#9B7BFF</color>
+    <color name="alf_text">#F5F5F7</color>
+    <color name="alf_muted">#9EA3AF</color>
 </resources>

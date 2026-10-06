@@ -243,8 +243,12 @@ class OverlayService : Service() {
         }
         private fun hit(x:Float,y:Float):Int{
             fun near(a:Float,b:Float)=kotlin.math.abs(a-b)<55
-            if(near(x,leftX)&&near(y,topY))return 2; if(near(x,rightX)&&near(y,topY))return 3; if(near(x,leftX)&&near(y,bottomY))return 4; if(near(x,rightX)&&near(y,bottomY))return 5
-            if(x>leftX&&x<rightX&&y>topY&&y<bottomY)return 1; return 0
+            if(near(x, leftX.toFloat()) && near(y, topY.toFloat())) return 2
+            if(near(x, rightX.toFloat()) && near(y, topY.toFloat())) return 3
+            if(near(x, leftX.toFloat()) && near(y, bottomY.toFloat())) return 4
+            if(near(x, rightX.toFloat()) && near(y, bottomY.toFloat())) return 5
+            if (x > leftX.toFloat() && x < rightX.toFloat() && y > topY.toFloat() && y < bottomY.toFloat()) return 1
+            return 0
         }
         private fun normalize(){
             leftX=leftX.coerceIn(0,width-120); topY=topY.coerceIn(0,height-160); rightX=max(leftX+160,min(rightX,width)); bottomY=max(topY+160,min(bottomY,height));
