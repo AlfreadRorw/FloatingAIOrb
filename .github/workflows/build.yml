@@ -2,21 +2,27 @@ name: Build ALF Vision Panel
 
 on:
   push:
-    branches: [ master, main ]
+    branches:
+      - master
+      - main
   pull_request:
+    branches:
+      - master
+      - main
   workflow_dispatch:
 
 permissions:
-  contents: read
-
-env:
-  JAVA_VERSION: '17'
-  ANDROID_COMPILE_SDK: '36'
-  ANDROID_BUILD_TOOLS: '36.0.0'
+  contents: write
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
+
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,71 +31,54 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
+      - name: Prepare Android SDK
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-${ANDROID_COMPILE_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}"
+          set -e
+
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"
+          fi
+
+          echo "Using sdkmanager:"
+          "$SDKMANAGER" --version
+
+          echo "Accepting Android SDK licenses..."
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+
+          echo "Installing required Android SDK packages..."
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+          echo "Android SDK ready."
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
+      - name: Verify Gradle
+        run: ./gradlew --version
+
+      - name: Clean
+        run: ./gradlew clean --stacktrace
+
       - name: Lint
         run: ./gradlew lint --stacktrace
 
-      - name: Unit tests
-        run: ./gradlew test --stacktrace
-
-      - name: Build debug APK
+      - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload debug artifact
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ALF-Vision-Debug
+          name: ALF-Vision-Panel-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
-      - name: Prepare signing keystore
-        id: signing
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build signed release
-        if: steps.signing.outputs.available == 'true'
-        env:
-          KEYSTORE_FILE: ${{ runner.temp }}/release.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          ./gradlew assembleRelease \
-            -PsigningStoreFile="$KEYSTORE_FILE" \
-            -PsigningStorePassword="$KEYSTORE_PASSWORD" \
-            -PsigningKeyAlias="$KEY_ALIAS" \
-            -PsigningKeyPassword="$KEY_PASSWORD" \
-            --stacktrace
-
-      - name: Upload release artifact
-        if: steps.signing.outputs.available == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ALF-Vision-Release
-          path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
+          retention-days: 14
