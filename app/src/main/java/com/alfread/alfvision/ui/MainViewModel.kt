@@ -2,7 +2,6 @@ package com.alfread.alfvision.ui
 
 import android.app.Application
 import android.content.Intent
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.alfread.alfvision.AlfVisionApplication
@@ -134,10 +133,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun startFloatingService(intent: Intent) {
-        ContextCompat.startService(
-            c.appContext,
-            intent
-        )
+        c.appContext.startService(intent)
     }
 
     fun stopCapture() {
@@ -148,10 +144,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             action = ScreenCaptureService.ACTION_STOP
         }
 
-        ContextCompat.startService(
-            c.appContext,
-            intent
-        )
+        c.appContext.startService(intent)
     }
 
     fun capture() {
