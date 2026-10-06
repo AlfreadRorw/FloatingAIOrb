@@ -23,6 +23,15 @@ object S {
     var iconSize by P("isz", 48)
     var dx by P("dx", -1)
     var dy by P("dy", -1)
+    var jitter by P("jit", 0)
+    var jitterT by P("jitt", 0)
+    var autoStop by P("astop", 0)
+    var cps by P("cps", 12)
+    var iconAlpha by P("ialpha", 100)
+    var hx by P("hx", 0)
+    var hy by P("hy", 600)
+    var hxl by P("hxl", 0)
+    var hyl by P("hyl", 250)
 }
 
 object T {
@@ -32,5 +41,7 @@ object T {
     val sub get() = (fg and 0xFFFFFF) or 0x99000000.toInt()
     val line get() = if (S.theme == 1) 0x33000000 else 0x33FFFFFF
     val hot = 0xFFFF3B30.toInt()
+    val green = 0xFF30D158.toInt()
+    val orange = 0xFFFF9F0A.toInt()
     fun bgA() = (bg and 0xFFFFFF) or ((S.alpha * 255 / 100) shl 24)
 }
