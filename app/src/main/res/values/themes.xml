@@ -1,9 +1,0 @@
-<resources>
-    <style name="Theme.ALF" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">@color/alf_black</item>
-        <item name="android:navigationBarColor">@color/alf_black</item>
-        <item name="android:colorAccent">@color/alf_accent</item>
-    </style>
-</resources>
