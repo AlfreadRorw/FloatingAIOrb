@@ -167,3 +167,8 @@ No custom backend, Firebase, cloud database, account login, or hidden upload ser
 - OCR and translation are implemented through Groq vision prompts; the architecture leaves room for a future local OCR engine without replacing MediaProjection.
 - Voice input uses Android SpeechRecognizer and does not run when microphone permission is denied.
 - Shizuku is optional. It does not replace MediaProjection and is not used to evade Android permission boundaries.
+
+
+### Room schema
+
+The initial release keeps Room schema export disabled because the database is versioned locally and migrations remain explicit in the database configuration.

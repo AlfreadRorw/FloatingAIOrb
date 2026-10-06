@@ -294,19 +294,21 @@ class FloatingPanelService : Service() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 ALFVisionTheme(runBlockingOrDefault()) {
-                    RegionSelectorOverlay(
-                        region = selectorRegion ?: return@RegionSelectorOverlay,
-                        onRegionChange = { selectorRegion = it.copy(screenWidth = metrics.widthPixels, screenHeight = metrics.heightPixels) },
-                        onReset = {
-                            selectorRegion = Region(metrics.widthPixels / 5, metrics.heightPixels / 5, metrics.widthPixels * 3 / 5, metrics.heightPixels * 3 / 5, metrics.widthPixels, metrics.heightPixels, rotation = display?.rotation ?: 0)
-                        },
-                        onCenter = {
-                            selectorRegion = selectorRegion?.let { r -> r.copy(x = (metrics.widthPixels - r.width) / 2, y = (metrics.heightPixels - r.height) / 2) }
-                        },
-                        onFullscreen = { selectorRegion = Region(0, 0, metrics.widthPixels, metrics.heightPixels, metrics.widthPixels, metrics.heightPixels, rotation = display?.rotation ?: 0) },
-                        onSave = { saveRegionPreset() },
-                        onClose = { closeRegionSelector() }
-                    )
+                    selectorRegion?.let { currentRegion ->
+                        RegionSelectorOverlay(
+                            region = currentRegion,
+                            onRegionChange = { selectorRegion = it.copy(screenWidth = metrics.widthPixels, screenHeight = metrics.heightPixels) },
+                            onReset = {
+                                selectorRegion = Region(metrics.widthPixels / 5, metrics.heightPixels / 5, metrics.widthPixels * 3 / 5, metrics.heightPixels * 3 / 5, metrics.widthPixels, metrics.heightPixels, rotation = display?.rotation ?: 0)
+                            },
+                            onCenter = {
+                                selectorRegion = selectorRegion?.let { r -> r.copy(x = (metrics.widthPixels - r.width) / 2, y = (metrics.heightPixels - r.height) / 2) }
+                            },
+                            onFullscreen = { selectorRegion = Region(0, 0, metrics.widthPixels, metrics.heightPixels, metrics.widthPixels, metrics.heightPixels, rotation = display?.rotation ?: 0) },
+                            onSave = { saveRegionPreset() },
+                            onClose = { closeRegionSelector() }
+                        )
+                    }
                 }
             }
         }

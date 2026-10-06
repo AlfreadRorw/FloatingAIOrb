@@ -8,7 +8,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.navigationBarItemColors
 import com.alfread.alfvision.ui.MainViewModel
 import com.alfread.alfvision.ui.screens.*
 

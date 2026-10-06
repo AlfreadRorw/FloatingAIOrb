@@ -4,6 +4,7 @@ import android.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -45,7 +46,7 @@ fun FloatingOrb(
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
             .border(2.dp, accent.copy(alpha = 0.85f), CircleShape)
             .pointerInput(Unit) {
-                androidx.compose.foundation.gestures.detectTapGestures(
+                detectTapGestures(
                     onTap = { onTap() },
                     onDoubleTap = { onDoubleTap() },
                     onLongPress = { onLongPress() }

@@ -28,7 +28,7 @@ class GroqRepository(
             ?: throw GroqApiException(401, "Groq API Key belum diatur.")
         var last: GroqApiException? = null
         val attempts = retryProvider().coerceIn(0, 4) + 1
-        repeat(attempts) { attempt ->
+        for (attempt in 0 until attempts) {
             try {
                 val (text, usage) = service().chat(apiKey, model, messages, systemPrompt, temperature, maxTokens, imageBase64, compareImageBase64)
                 return@withContext AiResult(text, model, ModelUsage(usage[0], usage[1], usage[2]))
@@ -40,7 +40,7 @@ class GroqRepository(
                     delay((600L * (1L shl attempt)).coerceAtMost(4_000L))
                 } else if (e.code in 500..599 && attempt < attempts - 1) {
                     delay((400L * (1L shl attempt)).coerceAtMost(3_000L))
-                } else break
+                } else throw e
             } catch (t: Throwable) {
                 throw GroqApiException(-1, "Network error. Check your internet connection.")
             }

@@ -22,9 +22,13 @@ android {
     signingConfigs {
         create("release") {
             val storeFileProp = providers.gradleProperty("signingStoreFile").orNull
+                ?: System.getenv("KEYSTORE_PATH")
             val storePasswordProp = providers.gradleProperty("signingStorePassword").orNull
+                ?: System.getenv("KEYSTORE_PASSWORD")
             val aliasProp = providers.gradleProperty("signingKeyAlias").orNull
+                ?: System.getenv("KEY_ALIAS")
             val keyPasswordProp = providers.gradleProperty("signingKeyPassword").orNull
+                ?: System.getenv("KEY_PASSWORD")
             if (!storeFileProp.isNullOrBlank() && !storePasswordProp.isNullOrBlank() && !aliasProp.isNullOrBlank() && !keyPasswordProp.isNullOrBlank()) {
                 storeFile = file(storeFileProp)
                 storePassword = storePasswordProp
@@ -97,6 +101,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.foundation:foundation")
     debugImplementation("androidx.compose.ui:ui-tooling")
 

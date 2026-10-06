@@ -38,14 +38,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun updateSettings(transform: (AppSettings) -> AppSettings) { viewModelScope.launch { c.settingsRepository.update(transform) } }
     fun showRegionSelector() {
         startFloating()
-        c.appContext.startService(android.content.Intent(c.appContext, com.alfread.alfvision.service.FloatingPanelService::class.java).setAction(com.alfread.alfvision.service.FloatingPanelService.ACTION_REGION))
+        androidx.core.content.ContextCompat.startService(c.appContext, android.content.Intent(c.appContext, com.alfread.alfvision.service.FloatingPanelService::class.java).setAction(com.alfread.alfvision.service.FloatingPanelService.ACTION_REGION))
     }
     fun clearScreenshots() { c.imageStorage.clear() }
     fun startFloating() {
         val i = android.content.Intent(c.appContext, com.alfread.alfvision.service.FloatingPanelService::class.java).setAction(com.alfread.alfvision.service.FloatingPanelService.ACTION_SHOW)
         androidx.core.content.ContextCompat.startService(c.appContext, i)
     }
-    fun stopCapture() { c.appContext.startService(android.content.Intent(c.appContext, com.alfread.alfvision.service.ScreenCaptureService::class.java).setAction(com.alfread.alfvision.service.ScreenCaptureService.ACTION_STOP)) }
+    fun stopCapture() { androidx.core.content.ContextCompat.startService(c.appContext, android.content.Intent(c.appContext, com.alfread.alfvision.service.ScreenCaptureService::class.java).setAction(com.alfread.alfvision.service.ScreenCaptureService.ACTION_STOP)) }
     fun capture() { c.controller.capture(c.sessionStore.region.value) }
     fun ask(prompt: String) { c.controller.ask(prompt) }
     fun quickAction(action: String) { c.controller.quickAction(action) }

@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
         AppSettingsEntity::class
     ],
     version = 1,
-    exportSchema = true
+    exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDao
