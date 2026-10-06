@@ -28,78 +28,38 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      - name: Prepare Android SDK
-        shell: bash
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Accept Android SDK licenses
         run: |
-          set -e
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
-          if [ ! -f "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          fi
-
-          if [ -z "$SDKMANAGER" ] || [ ! -f "$SDKMANAGER" ]; then
-            echo "sdkmanager tidak ditemukan."
-            exit 1
-          fi
-
-          echo "Using sdkmanager:"
-          "$SDKMANAGER" --version
-
-          echo "Accepting Android SDK licenses..."
-          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-
-          echo "Installing required SDK packages..."
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Verify Android SDK
-        shell: bash
+      - name: Check project
         run: |
-          set -e
+          echo "Project root:"
+          ls -la
+          test -f settings.gradle.kts || test -f settings.gradle
+          test -d app
 
-          echo "Installed Android platforms:"
-          ls -la "$ANDROID_HOME/platforms" || true
-
-          echo "Installed build tools:"
-          ls -la "$ANDROID_HOME/build-tools" || true
-
-          test -d "$ANDROID_HOME/platforms/android-35"
-          test -d "$ANDROID_HOME/build-tools/35.0.0"
-
-      - name: Make Gradle executable
-        run: |
-          chmod +x gradlew
+      - name: Make launcher executable
+        run: chmod +x gradlew
 
       - name: Gradle version
-        run: |
-          ./gradlew --version
-
-      - name: Clean project
-        run: |
-          ./gradlew clean --no-daemon
+        run: ./gradlew --version
 
       - name: Build Debug APK
-        run: |
-          ./gradlew assembleDebug \
-            --stacktrace \
-            --no-daemon \
-            --warning-mode all
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
-      - name: Show generated APK
-        run: |
-          echo "Generated APK files:"
-          find app/build/outputs/apk -type f -name "*.apk" -print
-
-      - name: Upload Debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ALF-Vision-Panel-debug
