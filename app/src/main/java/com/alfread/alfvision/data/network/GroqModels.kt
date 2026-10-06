@@ -31,7 +31,7 @@ internal object GroqJsonParser {
                     com.alfread.alfvision.core.model.GroqModel(
                         id = id,
                         active = item.optBoolean("active", true),
-                        ownedBy = item.optString("owned_by", null),
+                        ownedBy = item.optString("owned_by").takeIf { it.isNotBlank() },
                         contextWindow = context,
                         maxCompletionTokens = maxCompletion,
                         supportsVision = id == "qwen/qwen3.8-27b" || id.contains("vision", true) || id.contains("qwen", true) && id.contains("27b", true)

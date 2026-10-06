@@ -4,9 +4,11 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
 import android.os.IBinder
 import android.os.Build
 import android.provider.Settings
+import android.view.Display
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.runtime.getValue
@@ -261,6 +263,11 @@ class FloatingPanelService : Service() {
     }
 
 
+    private fun currentDisplayRotation(): Int =
+        getSystemService(DisplayManager::class.java)
+            ?.getDisplay(Display.DEFAULT_DISPLAY)
+            ?.rotation ?: 0
+
     private fun scheduleAutoHide(settings: AppSettings) {
         autoHideJob?.cancel()
         if (!settings.floating.autoHide) return
@@ -281,7 +288,7 @@ class FloatingPanelService : Service() {
             height = metrics.heightPixels * 3 / 5,
             screenWidth = metrics.widthPixels,
             screenHeight = metrics.heightPixels,
-            rotation = display?.rotation ?: 0
+            rotation = currentDisplayRotation()
         )
         regionParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -299,12 +306,12 @@ class FloatingPanelService : Service() {
                             region = currentRegion,
                             onRegionChange = { selectorRegion = it.copy(screenWidth = metrics.widthPixels, screenHeight = metrics.heightPixels) },
                             onReset = {
-                                selectorRegion = Region(metrics.widthPixels / 5, metrics.heightPixels / 5, metrics.widthPixels * 3 / 5, metrics.heightPixels * 3 / 5, metrics.widthPixels, metrics.heightPixels, rotation = display?.rotation ?: 0)
+                                selectorRegion = Region(metrics.widthPixels / 5, metrics.heightPixels / 5, metrics.widthPixels * 3 / 5, metrics.heightPixels * 3 / 5, metrics.widthPixels, metrics.heightPixels, rotation = currentDisplayRotation())
                             },
                             onCenter = {
                                 selectorRegion = selectorRegion?.let { r -> r.copy(x = (metrics.widthPixels - r.width) / 2, y = (metrics.heightPixels - r.height) / 2) }
                             },
-                            onFullscreen = { selectorRegion = Region(0, 0, metrics.widthPixels, metrics.heightPixels, metrics.widthPixels, metrics.heightPixels, rotation = display?.rotation ?: 0) },
+                            onFullscreen = { selectorRegion = Region(0, 0, metrics.widthPixels, metrics.heightPixels, metrics.widthPixels, metrics.heightPixels, rotation = currentDisplayRotation()) },
                             onSave = { saveRegionPreset() },
                             onClose = { closeRegionSelector() }
                         )
