@@ -59,8 +59,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _models = MutableStateFlow(
         listOf(
             GroqModel(
-                "qwen/qwen3.8-27b",
-                true,
+                id = "qwen/qwen3.8-27b",
+                active = true,
                 supportsVision = true
             )
         )
@@ -68,18 +68,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val models: StateFlow<List<GroqModel>> = _models
 
-    // -------------------------------------------------------------------------
-    // GROQ
-    // -------------------------------------------------------------------------
-
     fun saveApiKey(value: String) {
         val key = value.trim()
-
         if (key.isEmpty()) {
             _groqStatus.value = "API key cannot be empty."
             return
         }
-
         c.secureStore.putApiKey(key)
         _groqStatus.value = "API key saved securely on device."
     }
@@ -89,42 +83,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _groqStatus.value = "API key deleted."
     }
 
-    fun hasApiKey(): Boolean {
-        return c.secureStore.hasApiKey()
-    }
+    fun hasApiKey(): Boolean = c.secureStore.hasApiKey()
 
     fun testConnection() {
         viewModelScope.launch {
             _groqStatus.value = "Testing connection..."
-
             runCatching {
                 c.groqRepository.listModels()
             }.onSuccess { list ->
                 _models.value = list
-                _groqStatus.value =
-                    "Connected. ${list.size} models available."
+                _groqStatus.value = "Connected. ${list.size} models available."
             }.onFailure { error ->
-                _groqStatus.value =
-                    error.message ?: "Connection failed."
+                _groqStatus.value = error.message ?: "Connection failed."
             }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // SETTINGS
-    // -------------------------------------------------------------------------
-
-    fun updateSettings(
-        transform: (AppSettings) -> AppSettings
-    ) {
+    fun updateSettings(transform: (AppSettings) -> AppSettings) {
         viewModelScope.launch {
             c.settingsRepository.update(transform)
         }
     }
-
-    // -------------------------------------------------------------------------
-    // FLOATING PANEL
-    // -------------------------------------------------------------------------
 
     fun showRegionSelector() {
         startFloating()
@@ -139,6 +118,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         startFloatingService(intent)
     }
 
+    fun clearScreenshots() {
+        c.imageStorage.clear()
+    }
+
     fun startFloating() {
         val intent = Intent(
             c.appContext,
@@ -151,15 +134,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun startFloatingService(intent: Intent) {
-        ContextCompat.startForegroundService(
+        ContextCompat.startService(
             c.appContext,
             intent
         )
     }
-
-    // -------------------------------------------------------------------------
-    // SCREEN CAPTURE
-    // -------------------------------------------------------------------------
 
     fun stopCapture() {
         val intent = Intent(
@@ -176,26 +155,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun capture() {
-        c.controller.capture(
-            c.sessionStore.region.value
-        )
+        c.controller.capture(c.sessionStore.region.value)
     }
-
-    fun clearScreenshots() {
-        c.imageStorage.clear()
-    }
-
-    // -------------------------------------------------------------------------
-    // AI
-    // -------------------------------------------------------------------------
 
     fun ask(prompt: String) {
         val text = prompt.trim()
-
-        if (text.isEmpty()) {
-            return
-        }
-
+        if (text.isEmpty()) return
         c.controller.ask(text)
     }
 
@@ -215,10 +180,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         c.controller.retryLast()
     }
 
-    // -------------------------------------------------------------------------
-    // HISTORY
-    // -------------------------------------------------------------------------
-
     fun clearHistory() {
         viewModelScope.launch {
             c.historyRepository.deleteAll()
@@ -226,15 +187,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cleanupHistory(days: Int) {
-        if (days <= 0) {
-            return
-        }
+        if (days <= 0) return
 
         viewModelScope.launch {
             val cutoff =
-                System.currentTimeMillis() -
-                    days * 86_400_000L
-
+                System.currentTimeMillis() - days * 86_400_000L
             c.historyRepository.deleteOlderThan(cutoff)
         }
     }
@@ -245,66 +202,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun openConversation(id: Long) {
+    fun saveRegion(name: String, region: Region) {
         viewModelScope.launch {
-            val lines =
-                c.historyRepository.getMessages(id)
-
-            c.sessionStore.clearChat()
-
-            lines.forEach { line ->
-
-                if (line.role == Role.USER) {
-
-                    c.sessionStore.addUser(
-                        line.content,
-                        line.imagePath
-                    )
-
-                } else {
-
-                    c.sessionStore.addAssistant(
-                        line.content,
-                        line.model
-                            ?: settings.value.activeModel,
-                        ModelUsage(
-                            totalTokens =
-                                line.tokenUsage ?: 0
-                        ),
-                        line.imagePath
-                    )
-                }
-            }
+            c.regionRepository.save(name.trim(), region)
         }
     }
 
-    // -------------------------------------------------------------------------
-    // REGION PRESETS
-    // -------------------------------------------------------------------------
-
-    fun saveRegion(
-        name: String,
-        region: Region
-    ) {
-        viewModelScope.launch {
-            c.regionRepository.save(
-                name.trim(),
-                region
-            )
-        }
-    }
-
-    fun deleteRegion(
-        item: RegionPresetEntity
-    ) {
+    fun deleteRegion(item: RegionPresetEntity) {
         viewModelScope.launch {
             c.regionRepository.delete(item)
         }
     }
 
-    fun duplicateRegion(
-        item: RegionPresetEntity
-    ) {
+    fun duplicateRegion(item: RegionPresetEntity) {
         viewModelScope.launch {
             c.regionRepository.save(
                 "${item.name} Copy",
@@ -322,43 +232,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun updateRegion(
-        item: RegionPresetEntity
-    ) {
+    fun updateRegion(item: RegionPresetEntity) {
         viewModelScope.launch {
             c.regionRepository.update(item)
         }
     }
 
-    // -------------------------------------------------------------------------
-    // CHAT
-    // -------------------------------------------------------------------------
+    fun openConversation(id: Long) {
+        viewModelScope.launch {
+            val lines = c.historyRepository.getMessages(id)
+            c.sessionStore.clearChat()
+
+            lines.forEach { line ->
+                if (line.role == Role.USER) {
+                    c.sessionStore.addUser(
+                        line.content,
+                        line.imagePath
+                    )
+                } else {
+                    c.sessionStore.addAssistant(
+                        line.content,
+                        line.model ?: settings.value.activeModel,
+                        ModelUsage(
+                            totalTokens = line.tokenUsage ?: 0
+                        ),
+                        line.imagePath
+                    )
+                }
+            }
+        }
+    }
 
     fun pinCurrent() {
         c.sessionStore.pinCurrent()
     }
 
-    // -------------------------------------------------------------------------
-    // VOICE
-    // -------------------------------------------------------------------------
-
     fun voice() {
         c.voiceInputManager.start()
     }
 
-    // -------------------------------------------------------------------------
-    // AI PROFILES
-    // -------------------------------------------------------------------------
-
-    fun createProfile(
-        name: String,
-        prompt: String
-    ) {
+    fun createProfile(name: String, prompt: String) {
         val profileName = name.trim()
-
-        if (profileName.isEmpty()) {
-            return
-        }
+        if (profileName.isEmpty()) return
 
         viewModelScope.launch {
             c.profileRepository.create(
