@@ -1,140 +1,79 @@
 package com.alfread.alfvision
 
+import android.Manifest
 import android.app.Activity
-import android.content.*
-import android.media.projection.MediaProjectionManager
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.navigation.compose.rememberNavController
+import com.alfread.alfvision.service.FloatingPanelService
+import com.alfread.alfvision.service.ScreenCaptureService
+import com.alfread.alfvision.ui.MainViewModel
+import com.alfread.alfvision.ui.navigation.ALFNavHost
+import com.alfread.alfvision.ui.theme.ALFVisionTheme
 
 class MainActivity : ComponentActivity() {
-    private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK && r.data != null) {
-            val intent = Intent(this, ProjectionService::class.java).apply {
-                putExtra(ProjectionService.EXTRA_RESULT_CODE, r.resultCode)
-                putExtra(ProjectionService.EXTRA_DATA, r.data)
-            }
-            startForegroundService(intent)
-            ensureOverlayThenStart()
-        }
-    }
+    private val vm: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AppScreen() }
-    }
+        setContent {
+            val settings by vm.settings.collectAsState()
+            ALFVisionTheme(settings) {
+                Surface(Modifier.fillMaxSize()) {
+                    val navController = rememberNavController()
+                    val captureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                        val data = result.data
+                        if (result.resultCode == Activity.RESULT_OK && data != null) {
+                            val intent = Intent(this@MainActivity, ScreenCaptureService::class.java)
+                                .putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                                .putExtra(ScreenCaptureService.EXTRA_DATA, data)
+                            ContextCompat.startForegroundService(this@MainActivity, intent)
+                        } else vm.session.setError("Screen capture permission belum diberikan.")
+                    }
+                    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+                    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) vm.voice() }
 
-    override fun onResume() { super.onResume() }
-
-    private fun ensureOverlayThenStart() {
-        if (!Settings.canDrawOverlays(this)) {
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            Toast.makeText(this, "Aktifkan tampil di atas aplikasi lain, lalu kembali dan tekan Start Panel", Toast.LENGTH_LONG).show()
-            return
-        }
-        startService(Intent(this, OverlayService::class.java))
-    }
-
-    private fun startCapturePermission() {
-        if (!Settings.canDrawOverlays(this)) {
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            return
-        }
-        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        projectionLauncher.launch(mgr.createScreenCaptureIntent())
-    }
-
-    @Composable
-    private fun AppScreen() {
-        var key by remember { mutableStateOf(AppPrefs.getApiKey(this) ?: "") }
-        var model by remember { mutableStateOf(AppPrefs.getModel(this)) }
-        var prompt by remember { mutableStateOf(AppPrefs.getSystemPrompt(this)) }
-        var saved by remember { mutableStateOf(false) }
-        var history by remember { mutableStateOf(AppPrefs.getHistory(this)) }
-
-        MaterialTheme(colorScheme = darkColorScheme(
-            background = Color(0xFF07080A),
-            surface = Color(0xFF101217),
-            primary = Color(0xFF9B7BFF),
-            onPrimary = Color.White,
-            onBackground = Color(0xFFF5F5F7)
-        )) {
-            LazyColumn(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                item {
-                    Text("ALF Vision Panel", fontSize = 28.sp, color = Color.White)
-                    Text("Floating AI yang bisa melihat area layar yang kamu pilih", color = Color(0xFF9EA3AF))
-                }
-                item {
-                    ElevatedCard(colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF101217))) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Groq API", color = Color.White, fontSize = 18.sp)
-                            OutlinedTextField(key, { key=it }, modifier=Modifier.fillMaxWidth(), label={Text("API Key")}, singleLine=true)
-                            Text("Key disimpan terenkripsi memakai Android Keystore.", color=Color(0xFF969AA4), fontSize=12.sp)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick={ AppPrefs.setApiKey(this@MainActivity,key); saved=true }) { Text("Simpan") }
-                                if(saved) Text("Tersimpan", modifier=Modifier.padding(top=12.dp), color=Color(0xFFB7FFCF), fontSize=12.sp)
-                            }
-                        }
-                    }
-                }
-                item {
-                    ElevatedCard(colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF101217))) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Vision model", color = Color.White, fontSize = 18.sp)
-                            ModelChoice(model, "qwen/qwen3.8-27b") { model = "qwen/qwen3.8-27b"; AppPrefs.setModel(this@MainActivity, model) }
-                            ModelChoice(model, "qwen/qwen3.6-27b") { model = "qwen/qwen3.6-27b"; AppPrefs.setModel(this@MainActivity, model) }
-                        }
-                    }
-                }
-                item {
-                    ElevatedCard(colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF101217))) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("AI behavior", color=Color.White, fontSize=18.sp)
-                            OutlinedTextField(prompt,{prompt=it},modifier=Modifier.fillMaxWidth(),minLines=5,label={Text("System prompt")})
-                            Button(onClick={AppPrefs.setSystemPrompt(this@MainActivity,prompt)}) { Text("Simpan instruksi") }
-                        }
-                    }
-                }
-                item {
-                    ElevatedCard(colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF101217))) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Floating panel", color=Color.White, fontSize=18.sp)
-                            Text("Butuh izin tampil di atas aplikasi lain dan screen capture.",color=Color(0xFF9EA3AF),fontSize=12.sp)
-                            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Button(onClick={startCapturePermission()}) { Text("Start Panel") }
-                                OutlinedButton(onClick={ startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }) { Text("Overlay") }
-                            }
-                        }
-                    }
-                }
-                item {
-                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier=Modifier.fillMaxWidth()) {
-                        Text("Riwayat", color=Color.White, fontSize=18.sp)
-                        TextButton(onClick={AppPrefs.clearHistory(this@MainActivity); history=emptyList()}) { Text("Hapus") }
-                    }
-                }
-                items(history.take(15)) { item ->
-                    ElevatedCard(colors=CardDefaults.elevatedCardColors(containerColor=Color(0xFF101217))) {
-                        Column(Modifier.padding(14.dp)) { Text(item.first,color=Color.White); Spacer(Modifier.height(6.dp)); Text(item.second,color=Color(0xFFB4B7C0),fontSize=13.sp) }
-                    }
+                    ALFNavHost(
+                        navController = navController,
+                        vm = vm,
+                        onStartVision = {
+                            startVision(captureLauncher)
+                            if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        },
+                        onRequestMicrophone = { microphonePermission.launch(Manifest.permission.RECORD_AUDIO) },
+                        onOverlay = { openOverlaySettings() }
+                    )
                 }
             }
         }
     }
 
-    @Composable
-    private fun ModelChoice(current:String, value:String, onClick:()->Unit){ Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){ RadioButton(selected=current==value,onClick=onClick); Column{Text(value,color=Color.White); Text(if(value.contains("3.8"))"Recommended for vision + JSON" else "Alternative vision model",color=Color(0xFF9EA3AF),fontSize=12.sp)} } }
+    private fun startVision(launcher: androidx.activity.result.ActivityResultLauncher<Intent>) {
+        if (!Settings.canDrawOverlays(this)) {
+            openOverlaySettings()
+            return
+        }
+        vm.startFloating()
+        if (!ScreenCaptureService.isRunning) {
+            val manager = getSystemService(android.media.projection.MediaProjectionManager::class.java)
+            launcher.launch(manager.createScreenCaptureIntent())
+        }
+    }
+
+    private fun openOverlaySettings() {
+        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+        startActivity(intent)
+    }
 }

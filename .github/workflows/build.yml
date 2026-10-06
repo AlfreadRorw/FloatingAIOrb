@@ -1,66 +1,95 @@
-name: Build ALF Vision Panel APK
+name: Build ALF Vision Panel
 
 on:
   push:
     branches: [ master, main ]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  JAVA_VERSION: '17'
+  ANDROID_COMPILE_SDK: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+
 jobs:
   build:
-    name: Build APK
     runs-on: ubuntu-latest
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
-      - name: Setup Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Prepare Android SDK
+      - name: Install Android SDK packages
         shell: bash
         run: |
-          set -e
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager not found"
-            exit 1
-          fi
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-${ANDROID_COMPILE_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}"
 
-      - name: Verify project
-        run: |
-          test -f gradlew
-          test -f settings.gradle.kts
-          test -d app
-          chmod +x gradlew
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
 
-      - name: Gradle version
-        run: ./gradlew --version
+      - name: Lint
+        run: ./gradlew lint --stacktrace
+
+      - name: Unit tests
+        run: ./gradlew test --stacktrace
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ALF-Vision-Panel-debug
+          name: ALF-Vision-Debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 30
+
+      - name: Prepare signing keystore
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build signed release
+        if: steps.signing.outputs.available == 'true'
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -PsigningStoreFile="$KEYSTORE_FILE" \
+            -PsigningStorePassword="$KEYSTORE_PASSWORD" \
+            -PsigningKeyAlias="$KEY_ALIAS" \
+            -PsigningKeyPassword="$KEY_PASSWORD" \
+            --stacktrace
+
+      - name: Upload release artifact
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ALF-Vision-Release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

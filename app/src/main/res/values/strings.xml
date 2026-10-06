@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">ALF Vision Panel</string>
+    <string name="app_subtitle">AI Screen Assistant</string>
+    <string name="capture_notification_title">ALF Vision Panel</string>
+    <string name="capture_notification_text">Screen analysis is active</string>
+    <string name="notification_channel_name">Screen analysis</string>
+    <string name="notification_stop">STOP</string>
+    <string name="share_text_title">ALF Vision Panel</string>
 </resources>

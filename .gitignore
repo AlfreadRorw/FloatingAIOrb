@@ -2,7 +2,12 @@
 .idea/
 /local.properties
 /build/
-/captures/
+*/build/
+*.iml
 .externalNativeBuild/
 .cxx/
-*.iml
+.DS_Store
+captures/
+keystore.properties
+*.jks
+*.keystore

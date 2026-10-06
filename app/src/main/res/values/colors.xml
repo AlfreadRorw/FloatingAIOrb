@@ -1,8 +1,7 @@
 <resources>
-    <color name="alf_black">#07080A</color>
-    <color name="alf_panel">#101217</color>
-    <color name="alf_surface">#171A21</color>
-    <color name="alf_accent">#9B7BFF</color>
-    <color name="alf_text">#F5F5F7</color>
-    <color name="alf_muted">#9EA3AF</color>
+    <color name="brand_deep_blue">#1728FF</color>
+    <color name="brand_purple">#7B4DFF</color>
+    <color name="brand_cyan">#14D9FF</color>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
 </resources>
