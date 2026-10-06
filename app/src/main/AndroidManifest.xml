@@ -1,4 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -7,10 +9,10 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_alf_vision"
-        android:label="@string/app_name"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.ALFVision">
+        android:icon="@drawable/ic_alf_logo"
+        android:label="ALF Vision Panel"
+        android:theme="@style/AppTheme"
+        android:supportsRtl="true">
 
         <activity
             android:name=".MainActivity"
@@ -22,12 +24,8 @@
         </activity>
 
         <service
-            android:name=".ProjectionService"
+            android:name=".OverlayService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
-
-        <service
-            android:name=".OverlayService"
-            android:exported="false" />
     </application>
 </manifest>

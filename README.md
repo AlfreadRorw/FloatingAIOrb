@@ -1,27 +1,40 @@
 # ALF Vision Panel
 
-Native Android floating AI screen assistant using Groq vision models.
+Native Android floating AI vision panel.
 
 ## Features
-- Floating AI bubble and panel above other apps.
-- User-controlled screen region: move and resize a visible selection rectangle.
-- Region screenshot via Android MediaProjection.
-- Groq vision analysis using qwen/qwen3.8-27b or qwen/qwen3.6-27b.
-- API key entered manually and encrypted locally with Android Keystore.
-- Local prompt/system-instruction settings.
-- Local history of questions and answers.
-- No backend, Firebase, or proxy server.
-- GitHub Actions debug APK build.
 
-## First launch
+- Floating panel above other apps.
+- User-defined movable/resizable screen capture rectangle.
+- Android MediaProjection screen capture.
+- Groq Qwen 3.8 27B vision model.
+- Manual Groq API key.
+- API key protected with Android Keystore AES-GCM.
+- Local system prompt and model settings.
+- No Firebase.
+- No backend.
+- No Shizuku required.
+- GitHub Actions build.
+
+## Build
+
+GitHub Actions builds the debug APK automatically.
+
+## Usage
+
 1. Install APK.
-2. Enter your Groq API key.
-3. Save it.
-4. Press Start Panel.
-5. Grant screen-capture permission.
-6. Grant "Display over other apps" permission if requested.
-7. Tap the floating AI bubble.
-8. Press Select to edit the capture area, then Ask or Analyze.
+2. Enter Groq API key.
+3. Grant overlay permission.
+4. Start ALF Vision.
+5. Accept Android screen capture permission.
+6. Adjust the selection rectangle.
+7. Open the ALF floating panel.
+8. Ask a question and press Analisis Layar.
 
-## Important
-The app uses Android's MediaProjection consent flow. It does not silently read the screen. Shizuku is intentionally not required for the core workflow.
+Groq vision endpoint:
+https://api.groq.com/openai/v1/chat/completions
+
+Vision model:
+qwen/qwen3.8-27b
+
+When the selection is finished, press Kunci in the floating panel so the selection overlay disappears and the underlying app can be used normally.
