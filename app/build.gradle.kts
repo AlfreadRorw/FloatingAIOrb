@@ -33,16 +33,16 @@ android {
             )
 
             val keystorePath = System.getenv("KEYSTORE_PATH")
-            val storePassword = System.getenv("KEYSTORE_PASSWORD")
+            val storePasswordEnv = System.getenv("KEYSTORE_PASSWORD")
             val keyAliasEnv = System.getenv("KEY_ALIAS")
             val keyPasswordEnv = System.getenv("KEY_PASSWORD")
-            if (!keystorePath.isNullOrBlank() && !storePassword.isNullOrBlank() &&
+            if (!keystorePath.isNullOrBlank() && !storePasswordEnv.isNullOrBlank() &&
                 !keyAliasEnv.isNullOrBlank() && !keyPasswordEnv.isNullOrBlank() &&
                 file(keystorePath).exists()
             ) {
                 signingConfigs.create("ciRelease") {
                     storeFile = file(keystorePath)
-                    storePassword = storePassword
+                    storePassword = storePasswordEnv
                     keyAlias = keyAliasEnv
                     keyPassword = keyPasswordEnv
                 }
