@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ALF Vision Panel</string>
+    <string name="notification_channel_capture">Screen Analysis</string>
+    <string name="notification_capture_active">ALF Vision Panel</string>
+</resources>
