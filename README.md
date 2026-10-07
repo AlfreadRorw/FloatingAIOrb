@@ -1,196 +1,193 @@
 # ALF Vision Panel
 
-ALF Vision Panel is a native Android AI screen assistant built with Kotlin, Jetpack Compose, Material 3, MediaProjection, WindowManager overlays, Room, DataStore, Android Keystore, Coroutines, and OkHttp.
+Native Android AI screen assistant yang dapat hidup di atas aplikasi lain, memakai MediaProjection untuk mengambil layar, memilih region yang dapat dipindahkan/di-resize, lalu mengirim hanya area terpilih ke Groq Vision ketika pengguna meminta analisis.
 
-The main workflow is:
+## Core capabilities
 
-`Other app/game -> floating ALF panel -> region selector -> MediaProjection -> ImageReader -> crop/resize/compress -> Groq vision -> response in floating panel`
-
-No WebView, Firebase, cloud database, custom backend, account login, or hardcoded Groq API key is used.
-
-## Features
-
-- Native floating panel using `TYPE_APPLICATION_OVERLAY`
-- Floating AI Orb when minimized
-- MediaProjection + VirtualDisplay + ImageReader screen capture
-- Movable/resizable region selector with corner handles
-- Region presets with save, rename, duplicate, activate, delete
-- Groq API key protected by Android Keystore; only encrypted ciphertext is stored in app preferences
-- Groq model selector with dynamic `/models` loading
-- Vision chat and normal text chat
-- Manual capture by default; optional auto-analyze intervals from 0.5s to 30s
-- Quick actions: Analyze, Explain, Read, Translate, Summarize, Find Error, Extract Text, Describe, Help Me
-- AI profiles: General, Coding, Gaming, Translator, Android, Minecraft, MLBB, Homework, and custom profiles
-- Response styles: Short, Normal, Detailed, Technical, Step-by-step
-- Screenshot annotation: rectangle, circle, arrow, line, text, blur/pixelation, crop, undo, clear
-- Before/After screenshot comparison
-- SpeechRecognizer voice input when microphone permission is granted
+- Native Kotlin + Jetpack Compose + Material 3
+- Android overlay `TYPE_APPLICATION_OVERLAY`
+- Floating panel dan minimized AI orb
+- MediaProjection + VirtualDisplay + ImageReader
+- Region selector dengan drag, resize, reset, center, fullscreen, save
+- Region presets lokal dengan Room
+- Groq Chat Completions over HTTPS
+- Current vision model default: `qwen/qwen3.8-27b`
+- Secure Groq API key encryption using Android Keystore + AES/GCM
+- Chat, multi-turn context, quick vision actions, OCR/extract-text prompts, translation prompts
+- Screenshot compare menggunakan dua image dalam satu vision request
+- Annotation editor: rectangle, circle, line, arrow, text, blur, undo, redo
 - Local Room history
-- Privacy controls for history, screenshots, and auto-delete
-- Optional Shizuku presence detection without depending on it for core functionality
-- Gaming mode compact AI / Capture / Ask controls
-- Accessibility labels and large touch targets
+- AI profiles dan response styles
+- Voice input melalui Android SpeechRecognizer
+- Privacy controls dan screenshot retention controls
+- Optional Shizuku status integration; app tetap bekerja tanpa Shizuku
+- GitHub Actions lint, tests, debug build, optional signed release
+
+## Architecture
+
+```text
+UI / Compose
+   |
+   +--> MainViewModel
+   |
+   +--> VisionAssistantController
+           |
+           +--> CaptureCoordinator --> ScreenCaptureService --> MediaProjection/ImageReader
+           |
+           +--> ImageProcessor
+           |
+           +--> GroqRepository --> GroqApiService --> Groq HTTPS API
+           |
+           +--> HistoryRepository --> Room
+           +--> ProfileRepository --> Room
+           +--> RegionRepository --> Room
+           +--> SettingsRepository --> DataStore + Room snapshot
+           +--> SecureStore --> Android Keystore
+
+FloatingPanelService
+   +--> TYPE_APPLICATION_OVERLAY
+   +--> FloatingPanel
+   +--> FloatingOrb
+   +--> RegionSelectorOverlay
+```
 
 ## Requirements
 
-- Android 7.0+ (API 24)
-- Target SDK 35
-- JDK 17 for Android builds
-- Android SDK Platform 35 and Build Tools 35.0.0
-- A Groq API key for cloud AI analysis
+- Android Studio with JDK 17
+- Android SDK 36
+- Android device with Android 7.0+ (API 24+)
+- Internet connection for Groq requests
+- Groq API key created by the user
 
-## Groq API Key
+## Groq API key
 
-Open **Settings -> AI** and paste a key manually. The app encrypts the key with an AES-GCM key kept in Android Keystore. The raw key is not written to Logcat, notifications, DataStore, or the clipboard.
+1. Open ALF Vision Panel.
+2. Open Settings > AI.
+3. Enter the Groq API key manually.
+4. Press Save.
+5. Press Test Connection.
 
-The current default vision model is `qwen/qwen3.8-27b`. Groq's model catalog and vision documentation should be checked when choosing another model because availability can change.
+The key is encrypted locally with an Android Keystore AES key. It is not written to Git, DataStore, notifications, clipboard, or Logcat.
+
+The default model is `qwen/qwen3.8-27b`, currently documented by Groq as a multimodal model with vision and OCR capability. The app also exposes the Groq Models endpoint so active models can be refreshed instead of relying on deprecated model IDs.
 
 ## Permissions
 
-- **Overlay:** required for the floating panel and region selector.
-- **Screen capture:** granted through the Android MediaProjection consent dialog.
-- **Microphone:** optional voice input.
-- **Notifications:** recommended so foreground capture state is visible on Android 13+.
+Required depending on features:
 
-## Screen Capture
+- Overlay: Android Settings > Draw over other apps
+- MediaProjection: shown by the Android system screen capture consent dialog
+- Notifications: used for the media-projection foreground service on modern Android
+- Microphone: only for voice input
+- Shizuku: optional enhancement/status only
 
-Press **START VISION**. The app opens the overlay permission page when needed, then requests MediaProjection consent. Once approved, `ScreenCaptureService` runs as a media-projection foreground service.
+## Screen capture privacy
 
-Press **STOP CAPTURE** or the foreground notification's **STOP** action to release ImageReader, VirtualDisplay, and MediaProjection.
-
-The app does not silently start screen capture and does not send screenshots without a user-triggered AI request. With region mode enabled, only the selected region is sent.
-
-## Privacy
-
-By default:
-
-- screenshots are processed in memory and not permanently stored;
-- conversations may be stored locally in Room unless disabled;
-- cloud AI requests are sent directly from the device to Groq using HTTPS;
-- no ALF server stores your API key.
+The application does not silently start MediaProjection. The system consent dialog is required. Capture requests are on-demand by default. When region mode is active, the image is cropped before the Groq request. The floating panel and region overlay are temporarily hidden during capture so selector controls are not intentionally included in the submitted frame.
 
 ## Build locally
 
 ```bash
-git clone <your-repository-url>
-cd ALF-Vision-Panel
+chmod +x ./gradlew
 ./gradlew lint
 ./gradlew test
 ./gradlew assembleDebug
 ```
 
-No `local.properties` file is required by the project. Android SDK discovery is left to the local Android/Gradle environment.
+`gradlew` in this repository is a self-bootstrapping wrapper script that downloads Gradle 8.13 into the user's Gradle cache when required. It intentionally does not depend on a checked-in binary wrapper JAR.
 
 ## GitHub Actions
 
 Workflow: `.github/workflows/build.yml`
 
-It:
+The workflow:
 
-1. checks out the repository;
-2. installs JDK 17;
-3. installs Android SDK 35;
-4. enables Gradle caching;
-5. runs lint;
-6. runs unit tests;
-7. builds `assembleDebug`;
-8. uploads `ALF-Vision-Debug`.
+- checks out the repository
+- installs JDK 17
+- installs Android SDK 36 / Build Tools 36.0.0
+- runs lint
+- runs unit tests
+- builds `assembleDebug`
+- uploads `ALF-Vision-Debug`
+- optionally builds and uploads `ALF-Vision-Release` when signing secrets are complete
 
-For release signing, configure these repository secrets:
+### Release secrets
 
-- `KEYSTORE_BASE64`
-- `KEYSTORE_PASSWORD`
-- `KEY_ALIAS`
-- `KEY_PASSWORD`
-
-The workflow creates the keystore file at runtime and never commits it.
-
-## Architecture
+Create these GitHub Actions secrets:
 
 ```text
-ui/
-  navigation/
-  screens/
-  components/
-  theme/
-
-core/
-  AppContainer
-  EventBus
-  RegionState
-
-service/
-  FloatingPanelService
-  ScreenCaptureService
-
-data/
-  local/ Room database + DAOs + entities
-  network/ Groq HTTP client + models
-  prefs/ DataStore preferences
-  secure/ Android Keystore storage
-  repository/ application repositories
-
-domain/
-  RegionCalculator
-  ImageProcessor
-  PromptBuilder
-  ShizukuCompat
+KEYSTORE_BASE64
+KEYSTORE_PASSWORD
+KEY_ALIAS
+KEY_PASSWORD
 ```
 
-`FloatingPanelService` owns the overlay windows. AI/network logic lives in `GroqRepository` and `GroqApiClient`. Screen capture owns only MediaProjection, VirtualDisplay, and ImageReader. This separation keeps service lifecycle code from becoming the AI layer.
+The workflow reconstructs the keystore only inside the runner's temporary directory. The keystore is never committed.
 
 ## Troubleshooting
 
-### Overlay does not appear
+### Overlay tidak muncul
 
-Open Android **Settings -> Apps -> Special app access -> Display over other apps** and enable ALF Vision Panel. Then return to the app and retry.
+Check `Settings.canDrawOverlays(this)` in Android Settings and grant Draw over other apps. Then reopen ALF Vision Panel.
 
-### MediaProjection fails
+### MediaProjection gagal
 
-Tap **STOP VISION**, start again, and approve the Android screen-capture consent dialog. If the phone revoked the projection token after a system rotation or another capture app took the projection, repeat the flow.
+Use START VISION again and accept the system capture dialog. If the permission was revoked, stop the service and request it again.
 
-### API key invalid
+### Groq API error
 
-Use Settings -> AI -> Delete, paste the key again, Save, and run Test Connection. The app displays a user-facing authentication error without showing the Authorization header.
+Check API key, internet, model availability, account limits, and the error code. HTTP 401/403 means authentication/authorization; HTTP 429 means rate limiting; 5xx means the provider is temporarily unavailable.
 
-### Model unavailable
+### Model tidak tersedia
 
-Use Settings -> AI -> Refresh Models and select an active model returned by Groq. Vision requests require a model that supports image input.
+Press Test Connection to refresh active models. Use the model selector instead of manually entering an old deprecated model ID.
 
-### Rate limit
+### Shizuku tidak terdeteksi
 
-The app uses bounded exponential backoff for 429 and selected 5xx responses. It never performs infinite retries.
+Install and start Shizuku if you need its optional features. The application remains functional without it and does not use Shizuku to bypass Android security.
 
-### Shizuku not detected
+### GitHub Actions gagal
 
-Shizuku is optional. The core app remains fully functional without it. The application only detects the installed Shizuku package and does not claim to bypass Android security restrictions.
+Open the failed job and inspect the lint/test/build step. The workflow installs the required Android platform and Build Tools explicitly. It does not depend on `local.properties`.
 
-### GitHub Actions fails
+### Gradle gagal di local machine
 
-Check the first failing step. Common causes are Gradle/network service interruptions, Android SDK package availability, or a malformed signing secret. Debug builds do not require signing secrets.
+Use JDK 17. Confirm Android SDK 36 is installed. The repository must be online the first time the self-bootstrapping Gradle script downloads Gradle and dependencies.
 
-### Gradle fails locally
+## Data and privacy
 
-Use JDK 17, ensure Android SDK Platform 35 and Build Tools 35.0.0 are installed, and run `./gradlew --version` before building.
+By default, screenshot bytes are kept only in memory for the current session. Permanent screenshot history requires the user to enable Save Screenshots. Conversations are local Room data. Auto-delete is designed to be local cleanup only.
 
-## Security Notes
+No custom backend, Firebase, cloud database, account login, or hidden upload service is included.
 
-Never commit a Groq API key or release keystore. Do not enable debug logging for sensitive workflows. The internal logger redacts bearer-token-looking values and does not log screenshots or full sensitive prompts.
+## Feature notes
 
-## License
+- Auto Analyze is opt-in and disabled by default.
+- Stop capture uses the foreground service STOP action and releases ImageReader, VirtualDisplay and MediaProjection resources.
+- OCR and translation are implemented through Groq vision prompts; the architecture leaves room for a future local OCR engine without replacing MediaProjection.
+- Voice input uses Android SpeechRecognizer and does not run when microphone permission is denied.
+- Shizuku is optional. It does not replace MediaProjection and is not used to evade Android permission boundaries.
 
-The project is structured as an open-source-ready application. Add the license you want before public distribution.
 
-## Verification
+### Room schema
 
-The source tree has been checked for Kotlin/resource reference consistency, Android manifest/service declarations, Gradle configuration, GitHub Actions configuration, API-key leakage patterns, and missing incomplete markers.
+The initial release keeps Room schema export disabled because the database is versioned locally and migrations remain explicit in the database configuration.
 
-The build environment used to package this project does not provide an Android SDK or network access to download the Gradle distribution/dependencies, so `lint`, unit tests, and APK assembly were not executable inside that environment. The repository includes the complete Gradle wrapper configuration and a GitHub Actions workflow that performs those checks on a hosted runner.
 
-## Open-source libraries
+## Changelog 1.1.0
 
-The project uses AndroidX, Jetpack Compose, Material 3, Room, DataStore, Kotlin Coroutines, OkHttp, and Kotlin tooling. These libraries are distributed under their respective upstream open-source licenses, primarily Apache License 2.0. Check each dependency's published license before redistribution.
+**Fix force close**
+- Tema: `Color(argb.toULong())` memakai konstruktor nilai mentah Compose sehingga color space invalid dan app crash saat dibuka. Sekarang memakai `Color(Long)` (ARGB).
+- Overlay: `ComposeView` di Service sekarang punya LifecycleOwner / SavedStateRegistryOwner / ViewModelStoreOwner (`OverlayLifecycleOwner`), sebelumnya crash "ViewTreeLifecycleOwner not found" saat START VISION.
+- `ScreenCaptureService`: `startForeground()` dipanggil lebih dulu (tidak lagi ForegroundServiceDidNotStartInTimeException), frame terakhir ditahan sehingga capture layar statis tidak macet, padding bitmap dibuang, mendukung rotasi.
+- Editor anotasi: bitmap tidak lagi di-recycle saat masih dipakai, koordinat mark dipetakan ke bitmap asli, rect/circle tidak lagi transparan.
+- Panel tidak lagi hilang setelah capture / region selector (view disembunyikan, bukan dihapus tanpa null).
+- Region selector: drag tidak lagi putus tiap perubahan, `normalized()` aman di tepi layar.
+- Jaringan live (NetworkCallback), status API key tidak lagi decrypt Keystore di tiap recomposition, Auto Analyze tersambung ke setting, update settings atomik.
 
-## Privacy model
-
-Screen capture is initiated only after the Android MediaProjection consent flow. In selected-region mode, the captured full frame is cropped locally before the image is placed into the Groq request. The app has no custom backend, so the API key and request go directly from the device to the configured Groq endpoint over HTTPS.
+**UI/UX**
+- Tema gelap/terang baru, aksen, shape, dan tipografi.
+- Floating DockBar (Home, Vision, Chat, History, Settings) dengan indikator animasi, tersembunyi saat keyboard muncul.
+- Home baru: hero card, status tile, quick actions, tombol START/STOP VISION.
+- Panel overlay baru dengan dockbar sendiri (Chat, Tools, Setup, App), orb dengan tap / double tap / long press, drag memakai koordinat raw layar.
+- Settings dikelompokkan dalam kartu, slider hanya menyimpan saat dilepas.

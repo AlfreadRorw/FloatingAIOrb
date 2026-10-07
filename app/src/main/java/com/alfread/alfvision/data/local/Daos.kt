@@ -1,85 +1,54 @@
 package com.alfread.alfvision.data.local
 
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ConversationDao {
-    @Query("SELECT * FROM conversations ORDER BY updatedAt DESC")
-    fun observeAll(): Flow<List<ConversationEntity>>
-
-    @Query("SELECT * FROM conversations WHERE id = :id")
-    suspend fun get(id: Long): ConversationEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(value: ConversationEntity)
-
-    @Delete
-    suspend fun delete(value: ConversationEntity)
-
-    @Query("DELETE FROM conversations WHERE updatedAt < :before")
-    suspend fun deleteOlderThan(before: Long)
-
-    @Query("DELETE FROM conversations")
-    suspend fun deleteAll()
+    @Insert suspend fun insert(value: ConversationEntity): Long
+    @Update suspend fun update(value: ConversationEntity)
+    @Query("SELECT * FROM conversations ORDER BY updatedAt DESC") fun observeAll(): Flow<List<ConversationEntity>>
+    @Query("SELECT * FROM conversations WHERE id = :id LIMIT 1") suspend fun get(id: Long): ConversationEntity?
+    @Query("DELETE FROM conversations WHERE id = :id") suspend fun delete(id: Long)
+    @Query("DELETE FROM conversations WHERE updatedAt < :cutoff") suspend fun deleteOlderThan(cutoff: Long)
+    @Query("DELETE FROM conversations") suspend fun deleteAll()
 }
 
 @Dao
 interface MessageDao {
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
-    suspend fun getForConversation(conversationId: Long): List<MessageEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(value: MessageEntity)
-
-    @Query("DELETE FROM messages WHERE conversationId = :conversationId")
-    suspend fun deleteForConversation(conversationId: Long)
-
-    @Query("DELETE FROM messages WHERE timestamp < :before")
-    suspend fun deleteOlderThan(before: Long)
-
-    @Query("DELETE FROM messages")
-    suspend fun deleteAll()
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(value: MessageEntity): Long
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(value: List<MessageEntity>)
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC") suspend fun getForConversation(conversationId: Long): List<MessageEntity>
+    @Query("DELETE FROM messages WHERE conversationId = :conversationId") suspend fun deleteForConversation(conversationId: Long)
+    @Query("DELETE FROM messages") suspend fun deleteAll()
 }
 
 @Dao
 interface RegionPresetDao {
-    @Query("SELECT * FROM region_presets ORDER BY createdAt DESC")
-    fun observeAll(): Flow<List<RegionPresetEntity>>
-
-    @Insert
-    suspend fun insert(value: RegionPresetEntity): Long
-
-    @Update
-    suspend fun update(value: RegionPresetEntity)
-
-    @Delete
-    suspend fun delete(value: RegionPresetEntity)
-
-    @Query("DELETE FROM region_presets")
-    suspend fun deleteAll()
+    @Insert suspend fun insert(value: RegionPresetEntity): Long
+    @Update suspend fun update(value: RegionPresetEntity)
+    @Delete suspend fun delete(value: RegionPresetEntity)
+    @Query("SELECT * FROM region_presets ORDER BY createdAt DESC") fun observeAll(): Flow<List<RegionPresetEntity>>
+    @Query("SELECT * FROM region_presets WHERE id = :id LIMIT 1") suspend fun get(id: Long): RegionPresetEntity?
 }
 
 @Dao
 interface AIProfileDao {
-    @Query("SELECT * FROM ai_profiles ORDER BY updatedAt DESC")
-    fun observeAll(): Flow<List<AIProfileEntity>>
-
-    @Query("SELECT * FROM ai_profiles WHERE name = :name LIMIT 1")
-    suspend fun get(name: String): AIProfileEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(value: AIProfileEntity)
-
-    @Query("DELETE FROM ai_profiles WHERE name = :name")
-    suspend fun delete(name: String)
+    @Insert suspend fun insert(value: AIProfileEntity): Long
+    @Update suspend fun update(value: AIProfileEntity)
+    @Delete suspend fun delete(value: AIProfileEntity)
+    @Query("SELECT * FROM ai_profiles ORDER BY builtIn DESC, name ASC") fun observeAll(): Flow<List<AIProfileEntity>>
+    @Query("SELECT * FROM ai_profiles WHERE id = :id LIMIT 1") suspend fun get(id: Long): AIProfileEntity?
+    @Query("SELECT COUNT(*) FROM ai_profiles") suspend fun count(): Int
 }
 
 @Dao
 interface AppSettingsDao {
-    @Query("SELECT * FROM app_settings WHERE `key` = :key LIMIT 1")
-    suspend fun get(key: String): AppSettingsEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(value: AppSettingsEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(value: AppSettingsEntity)
+    @Query("SELECT * FROM app_settings WHERE id = 1 LIMIT 1") suspend fun get(): AppSettingsEntity?
 }

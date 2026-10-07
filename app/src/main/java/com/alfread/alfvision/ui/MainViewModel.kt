@@ -1,162 +1,329 @@
 package com.alfread.alfvision.ui
 
-import android.graphics.Bitmap
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Intent
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.alfread.alfvision.core.AppContainer
-import com.alfread.alfvision.core.Constants
-import com.alfread.alfvision.core.CapturedFrame
-import com.alfread.alfvision.data.network.GroqError
-import com.alfread.alfvision.data.network.GroqModelInfo
-import com.alfread.alfvision.data.prefs.AppSettings
-import com.alfread.alfvision.data.local.AIProfileEntity
-import com.alfread.alfvision.core.VisionEventBus
-import kotlinx.coroutines.flow.*
+import com.alfread.alfvision.AlfVisionApplication
+import com.alfread.alfvision.core.model.*
+import com.alfread.alfvision.data.local.ConversationEntity
+import com.alfread.alfvision.data.local.RegionPresetEntity
+import com.alfread.alfvision.service.FloatingPanelService
+import com.alfread.alfvision.service.ScreenCaptureService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class MainViewModel : ViewModel() {
-    val settings: StateFlow<AppSettings> = AppContainer.preferences.settings.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5_000),
-        defaultSettings()
+class MainViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val c = (app as AlfVisionApplication).container
+
+    val settings: StateFlow<AppSettings> =
+        c.settingsRepository.flow.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = AppSettings()
+        )
+
+    val conversations: StateFlow<List<ConversationEntity>> =
+        c.historyRepository.observeConversations()
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList()
+            )
+
+    val regions: StateFlow<List<RegionPresetEntity>> =
+        c.regionRepository.observe()
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList()
+            )
+
+    val profiles =
+        c.profileRepository.observe()
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList()
+            )
+
+    val session = c.sessionStore
+    val network = c.networkMonitor.connected
+    val shizuku = c.shizukuCompat
+
+    // Status API key disimpan sebagai state. Sebelumnya hasApiKey() men-decrypt Keystore di main thread
+    // pada SETIAP recomposition Home (lambat dan bisa membuat UI patah-patah).
+    private val _apiReady = MutableStateFlow(false)
+    val apiReady: StateFlow<Boolean> = _apiReady
+
+    init { refreshApiKey() }
+
+    fun refreshApiKey() {
+        viewModelScope.launch {
+            _apiReady.value = withContext(Dispatchers.IO) { runCatching { c.secureStore.hasApiKey() }.getOrDefault(false) }
+        }
+    }
+
+    private val _groqStatus = MutableStateFlow<String?>(null)
+    val groqStatus: StateFlow<String?> = _groqStatus
+
+    private val _models = MutableStateFlow(
+        listOf(
+            GroqModel(
+                id = "qwen/qwen3.8-27b",
+                active = true,
+                supportsVision = true
+            )
+        )
     )
 
-    private val _apiKeyConfigured = MutableStateFlow(AppContainer.secureStore.hasApiKey())
-    val apiKeyConfigured: StateFlow<Boolean> = _apiKeyConfigured.asStateFlow()
+    val models: StateFlow<List<GroqModel>> = _models
 
-    private val _connectionStatus = MutableStateFlow("Not tested")
-    val connectionStatus: StateFlow<String> = _connectionStatus.asStateFlow()
+    fun saveApiKey(value: String) {
+        val key = value.trim()
+        if (key.isEmpty()) {
+            _groqStatus.value = "API key cannot be empty."
+            return
+        }
+        c.secureStore.putApiKey(key)
+        refreshApiKey()
+        _groqStatus.value = "API key saved securely on device."
+    }
 
-    private val _models = MutableStateFlow<List<GroqModelInfo>>(emptyList())
-    val models: StateFlow<List<GroqModelInfo>> = _models.asStateFlow()
+    fun deleteApiKey() {
+        c.secureStore.deleteApiKey()
+        _apiReady.value = false
+        _groqStatus.value = "API key deleted."
+    }
 
-    private val _frame = MutableStateFlow<CapturedFrame?>(null)
-    val frame: StateFlow<CapturedFrame?> = _frame.asStateFlow()
-    private val _previousFrame = MutableStateFlow<CapturedFrame?>(null)
-    val previousFrame: StateFlow<CapturedFrame?> = _previousFrame.asStateFlow()
+    fun hasApiKey(): Boolean = c.secureStore.hasApiKey()
 
-    private val _profiles = MutableStateFlow<List<AIProfileEntity>>(emptyList())
-    val profiles: StateFlow<List<AIProfileEntity>> = _profiles.asStateFlow()
-
-    val conversations = AppContainer.history.observeConversations()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
-
-    init {
-        viewModelScope.launch { AppContainer.profiles.ensureDefaults() }
-        viewModelScope.launch { AppContainer.profiles.observe().collect { _profiles.value = it } }
+    fun testConnection() {
         viewModelScope.launch {
-            VisionEventBus.frames.collect { value ->
-                _previousFrame.value = _frame.value
-                _frame.value = value
+            _groqStatus.value = "Testing connection..."
+            runCatching {
+                c.groqRepository.listModels()
+            }.onSuccess { list ->
+                _models.value = list
+                _groqStatus.value = "Connected. ${list.size} models available."
+            }.onFailure { error ->
+                _groqStatus.value = error.message ?: "Connection failed."
             }
         }
     }
 
-    fun saveApiKey(value: String) {
-        _error.value = null
-        if (value.trim().length < 10) {
-            _error.value = "API key terlalu pendek."
-            return
-        }
-        AppContainer.secureStore.saveApiKey(value.trim())
-        _apiKeyConfigured.value = true
-        _connectionStatus.value = "Saved securely"
-    }
-
-    fun deleteApiKey() {
-        AppContainer.secureStore.deleteApiKey()
-        _apiKeyConfigured.value = false
-        _connectionStatus.value = "Not configured"
-    }
-
-    fun testConnection() {
+    fun updateSettings(transform: (AppSettings) -> AppSettings) {
         viewModelScope.launch {
-            _connectionStatus.value = "Testing…"
-            val result = AppContainer.groq.testConnection()
-            result.onSuccess { _connectionStatus.value = it }
-                .onFailure { error -> _connectionStatus.value = error.userMessage(); _error.value = error.userMessage() }
+            c.settingsRepository.update(transform)
         }
     }
 
-    fun refreshModels() {
+    fun showRegionSelector() {
+        startFloating()
+
+        val intent = Intent(
+            c.appContext,
+            FloatingPanelService::class.java
+        ).apply {
+            action = FloatingPanelService.ACTION_REGION
+        }
+
+        startFloatingService(intent)
+    }
+
+    fun stopVision() {
+        stopCapture()
+        runCatching {
+            c.appContext.startService(
+                Intent(c.appContext, FloatingPanelService::class.java).apply { action = FloatingPanelService.ACTION_CLOSE }
+            )
+        }
+    }
+
+    fun stopVoice() {
+        c.voiceInputManager.stop()
+    }
+
+    fun newChat() {
+        c.controller.cancelRequest()
+        c.sessionStore.clearChat()
+        c.controller.resetConversation()
+    }
+
+    fun clearRegion() {
+        c.sessionStore.setRegion(null)
+    }
+
+    fun clearScreenshots() {
+        c.imageStorage.clear()
+    }
+
+    fun startFloating() {
+        val intent = Intent(
+            c.appContext,
+            FloatingPanelService::class.java
+        ).apply {
+            action = FloatingPanelService.ACTION_SHOW
+        }
+
+        startFloatingService(intent)
+    }
+
+    private fun startFloatingService(intent: Intent) {
+        runCatching { c.appContext.startService(intent) }
+            .onFailure { c.sessionStore.setError("Floating panel gagal dimulai. Buka app lagi lalu coba START VISION.") }
+    }
+
+    fun stopCapture() {
+        val intent = Intent(
+            c.appContext,
+            ScreenCaptureService::class.java
+        ).apply {
+            action = ScreenCaptureService.ACTION_STOP
+        }
+
+        c.appContext.startService(intent)
+    }
+
+    fun capture() {
+        c.controller.capture(c.sessionStore.region.value)
+    }
+
+    fun ask(prompt: String) {
+        val text = prompt.trim()
+        if (text.isEmpty()) return
+        c.controller.ask(text)
+    }
+
+    fun quickAction(action: String) {
+        c.controller.quickAction(action)
+    }
+
+    fun compare() {
+        c.controller.compare()
+    }
+
+    fun stopRequest() {
+        c.controller.cancelRequest()
+    }
+
+    fun retryLast() {
+        c.controller.retryLast()
+    }
+
+    fun clearHistory() {
         viewModelScope.launch {
-            AppContainer.groq.listModels().onSuccess { _models.value = it }
-                .onFailure { _error.value = it.userMessage() }
+            c.historyRepository.deleteAll()
         }
     }
 
-    fun setModel(model: String) = viewModelScope.launch { AppContainer.preferences.setSelectedModel(model) }
-    fun setTheme(value: com.alfread.alfvision.core.ThemeMode) = viewModelScope.launch { AppContainer.preferences.setTheme(value) }
-    fun setAccent(value: com.alfread.alfvision.core.AccentColor) = viewModelScope.launch { AppContainer.preferences.setAccent(value) }
-    fun setResponseStyle(value: com.alfread.alfvision.core.ResponseStyle) = viewModelScope.launch { AppContainer.preferences.setResponseStyle(value) }
-    fun setTemperature(value: Float) = viewModelScope.launch { AppContainer.preferences.setTemperature(value) }
-    fun setMaxTokens(value: Int) = viewModelScope.launch { AppContainer.preferences.setMaxTokens(value) }
-    fun setSaveHistory(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setSaveHistory(value) }
-    fun setSaveScreenshots(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setSaveScreenshots(value) }
-    fun setSendOnlyRegion(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setSendOnlySelectedRegion(value) }
-    fun setAutoAnalyze(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setAutoAnalyze(value) }
-    fun setAutoAnalyzeIntervalMs(value: Int) = viewModelScope.launch { AppContainer.preferences.setAutoAnalyzeIntervalMs(value) }
-    fun setGamingMode(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setGamingMode(value) }
-    fun setCaptureQuality(value: Int) = viewModelScope.launch { AppContainer.preferences.setCaptureQuality(value) }
-    fun setOpacity(value: Float) = viewModelScope.launch { AppContainer.preferences.setOpacity(value) }
-    fun setSnap(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setSnap(value) }
-    fun setLockPosition(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setLockPosition(value) }
-    fun setAnimation(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setAnimation(value) }
-    fun setAutoHide(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setAutoHide(value) }
-    fun setBlur(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setBlur(value) }
-    fun setPanelStyle(value: com.alfread.alfvision.core.PanelStyle) = viewModelScope.launch { AppContainer.preferences.setPanelStyle(value) }
-    fun setTimeout(value: Int) = viewModelScope.launch { AppContainer.preferences.setTimeout(value) }
-    fun setRetryCount(value: Int) = viewModelScope.launch { AppContainer.preferences.setRetryCount(value) }
-    fun setDebug(value: Boolean) = viewModelScope.launch { AppContainer.preferences.setDebug(value) }
-    fun setAutoDelete(value: com.alfread.alfvision.core.AutoDeletePeriod) = viewModelScope.launch { AppContainer.preferences.setAutoDelete(value) }
-    fun setProfile(value: String) = viewModelScope.launch { AppContainer.preferences.setActiveProfile(value) }
+    fun cleanupHistory(days: Int) {
+        if (days <= 0) return
 
-    fun clearError() { _error.value = null }
+        viewModelScope.launch {
+            val cutoff =
+                System.currentTimeMillis() - days * 86_400_000L
+            c.historyRepository.deleteOlderThan(cutoff)
+        }
+    }
 
-    private fun Throwable.userMessage(): String = when (this) {
-        is GroqError.MissingApiKey -> "Groq API Key belum diatur."
-        is GroqError.RateLimit -> "Rate limit reached."
-        is GroqError.ModelUnavailable -> message ?: "Model tidak tersedia."
-        is GroqError.Network -> message ?: "Internet tidak tersedia."
-        is GroqError.Auth -> message ?: "API key tidak valid."
-        else -> message ?: "Terjadi kesalahan."
+    fun deleteConversation(id: Long) {
+        viewModelScope.launch {
+            c.historyRepository.deleteConversation(id)
+        }
+    }
+
+    fun saveRegion(name: String, region: Region) {
+        viewModelScope.launch {
+            c.regionRepository.save(name.trim(), region)
+        }
+    }
+
+    fun deleteRegion(item: RegionPresetEntity) {
+        viewModelScope.launch {
+            c.regionRepository.delete(item)
+        }
+    }
+
+    fun duplicateRegion(item: RegionPresetEntity) {
+        viewModelScope.launch {
+            c.regionRepository.save(
+                "${item.name} Copy",
+                Region(
+                    x = item.x,
+                    y = item.y,
+                    width = item.width,
+                    height = item.height,
+                    screenWidth = item.screenWidth,
+                    screenHeight = item.screenHeight,
+                    displayId = item.displayId,
+                    rotation = item.rotation
+                )
+            )
+        }
+    }
+
+    fun updateRegion(item: RegionPresetEntity) {
+        viewModelScope.launch {
+            c.regionRepository.update(item)
+        }
+    }
+
+    fun openConversation(id: Long) {
+        viewModelScope.launch {
+            val lines = c.historyRepository.getMessages(id)
+            c.sessionStore.clearChat()
+            c.controller.resumeConversation(id)
+
+            lines.forEach { line ->
+                if (line.role == Role.USER) {
+                    c.sessionStore.addUser(
+                        line.content,
+                        line.imagePath
+                    )
+                } else {
+                    c.sessionStore.addAssistant(
+                        line.content,
+                        line.model ?: settings.value.activeModel,
+                        ModelUsage(
+                            totalTokens = line.tokenUsage ?: 0
+                        ),
+                        line.imagePath
+                    )
+                }
+            }
+        }
+    }
+
+    fun pinCurrent() {
+        c.sessionStore.pinCurrent()
+    }
+
+    fun voice() {
+        c.voiceInputManager.start()
+    }
+
+    fun createProfile(name: String, prompt: String) {
+        val profileName = name.trim()
+        if (profileName.isEmpty()) return
+
+        viewModelScope.launch {
+            c.profileRepository.create(
+                AiProfile(
+                    name = profileName,
+                    systemPrompt = prompt
+                )
+            )
+        }
     }
 }
-
-private fun defaultSettings(): AppSettings = AppSettings(
-    theme = com.alfread.alfvision.core.ThemeMode.DARK,
-    accent = com.alfread.alfvision.core.AccentColor.BLUE,
-    selectedModel = Constants.DEFAULT_MODEL,
-    responseStyle = com.alfread.alfvision.core.ResponseStyle.NORMAL,
-    temperature = 0.7f,
-    maxTokens = 2048,
-    saveHistory = true,
-    saveScreenshots = false,
-    sendOnlySelectedRegion = true,
-    autoAnalyze = false,
-    autoAnalyzeIntervalMs = 5000,
-    gamingMode = false,
-    captureQuality = 85,
-    panelWidth = 360,
-    panelHeight = 520,
-    panelX = 24,
-    panelY = 80,
-    orbSize = 64,
-    opacity = 0.96f,
-    snap = true,
-    lockPosition = false,
-    animation = true,
-    autoHide = false,
-    blur = true,
-    panelStyle = com.alfread.alfvision.core.PanelStyle.GLASS,
-    timeoutSeconds = 45,
-    retryCount = 2,
-    debugMode = false,
-    autoDelete = com.alfread.alfvision.core.AutoDeletePeriod.NEVER,
-    activeProfile = "General",
-    lastSuccessfulRequest = "Never",
-    lastError = "None"
-)

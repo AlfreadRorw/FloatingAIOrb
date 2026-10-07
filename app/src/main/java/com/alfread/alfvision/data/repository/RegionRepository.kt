@@ -1,40 +1,32 @@
 package com.alfread.alfvision.data.repository
 
-import com.alfread.alfvision.core.RegionRect
-import com.alfread.alfvision.data.local.AppDatabase
+import com.alfread.alfvision.core.model.Region
+import com.alfread.alfvision.data.local.RegionPresetDao
 import com.alfread.alfvision.data.local.RegionPresetEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
-class RegionRepository(private val database: AppDatabase) {
-    fun observe(): Flow<List<RegionPresetEntity>> = database.regionPresetDao().observeAll()
+class RegionRepository(private val dao: RegionPresetDao) {
+    fun observe(): Flow<List<RegionPresetEntity>> = dao.observeAll()
 
-    suspend fun save(name: String, region: RegionRect): Long = database.regionPresetDao().insert(
+    suspend fun save(name: String, region: Region): Long = dao.insert(
         RegionPresetEntity(
             name = name,
             x = region.x,
             y = region.y,
             width = region.width,
             height = region.height,
-            sourceWidth = region.sourceWidth,
-            sourceHeight = region.sourceHeight,
-            rotation = region.rotation,
+            screenWidth = region.screenWidth,
+            screenHeight = region.screenHeight,
             displayId = region.displayId,
+            rotation = region.rotation,
             createdAt = System.currentTimeMillis()
         )
     )
 
-    suspend fun delete(item: RegionPresetEntity) = database.regionPresetDao().delete(item)
-    suspend fun update(item: RegionPresetEntity) = database.regionPresetDao().update(item)
-    suspend fun deleteAll() = database.regionPresetDao().deleteAll()
+    suspend fun delete(item: RegionPresetEntity) = dao.delete(item)
 
-    fun toRegion(item: RegionPresetEntity) = RegionRect(
-        x = item.x,
-        y = item.y,
-        width = item.width,
-        height = item.height,
-        sourceWidth = item.sourceWidth,
-        sourceHeight = item.sourceHeight,
-        rotation = item.rotation,
-        displayId = item.displayId
-    )
+    suspend fun update(item: RegionPresetEntity) = dao.update(item)
+
+    fun toRegion(item: RegionPresetEntity): Region = Region(item.x, item.y, item.width, item.height, item.screenWidth, item.screenHeight, item.displayId, item.rotation)
 }

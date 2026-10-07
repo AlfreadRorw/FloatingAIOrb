@@ -1,31 +1,47 @@
 package com.alfread.alfvision.data.network
 
-data class GroqRequestMessage(
-    val role: String,
-    val text: String,
-    val imageDataUris: List<String> = emptyList()
-)
+import org.json.JSONArray
+import org.json.JSONObject
 
-data class GroqResult(
-    val text: String,
-    val model: String,
-    val inputTokens: Int? = null,
-    val outputTokens: Int? = null
-)
+internal object GroqJsonParser {
+    fun parseCompletion(json: JSONObject): Pair<String, IntArray> {
+        val choice = json.optJSONArray("choices")?.optJSONObject(0)
+            ?: throw GroqApiException(500, "Groq returned no choices.")
+        val message = choice.optJSONObject("message")
+            ?: throw GroqApiException(500, "Groq returned an invalid message.")
+        val content = message.optString("content", "").trim()
+        if (content.isEmpty()) throw GroqApiException(500, "Groq returned an empty response.")
+        val usage = json.optJSONObject("usage")
+        return content to intArrayOf(
+            usage?.optInt("prompt_tokens", 0) ?: 0,
+            usage?.optInt("completion_tokens", 0) ?: 0,
+            usage?.optInt("total_tokens", 0) ?: 0
+        )
+    }
 
-data class GroqModelInfo(
-    val id: String,
-    val active: Boolean,
-    val contextWindow: Int,
-    val maxCompletionTokens: Int
-)
-
-sealed class GroqError(message: String, val code: Int? = null) : Exception(message) {
-    class MissingApiKey : GroqError("Groq API Key belum diatur.")
-    class Auth(code: Int, message: String) : GroqError(message, code)
-    class RateLimit(message: String) : GroqError(message, 429)
-    class Server(code: Int, message: String) : GroqError(message, code)
-    class Network(message: String) : GroqError(message)
-    class InvalidResponse(message: String) : GroqError(message)
-    class ModelUnavailable(message: String) : GroqError(message)
+    fun parseModels(json: JSONObject): List<com.alfread.alfvision.core.model.GroqModel> {
+        val data: JSONArray = json.optJSONArray("data") ?: return emptyList()
+        return buildList {
+            for (i in 0 until data.length()) {
+                val item = data.optJSONObject(i) ?: continue
+                val id = item.optString("id", "").takeIf { it.isNotBlank() } ?: continue
+                val context = item.optLong("context_window", 0L).takeIf { it > 0 }
+                val maxCompletion = item.optLong("max_completion_tokens", 0L).takeIf { it > 0 }
+                add(
+                    com.alfread.alfvision.core.model.GroqModel(
+                        id = id,
+                        active = item.optBoolean("active", true),
+                        ownedBy = item.optString("owned_by").takeIf { it.isNotBlank() },
+                        contextWindow = context,
+                        maxCompletionTokens = maxCompletion,
+                        supportsVision = id == "qwen/qwen3.8-27b" || id.contains("vision", true) || id.contains("qwen", true) && id.contains("27b", true)
+                    )
+                )
+            }
+        }.filter { it.active }
+    }
 }
+
+data class GroqErrorInfo(val code: Int, val message: String)
+
+class GroqApiException(val code: Int, override val message: String) : Exception(message)

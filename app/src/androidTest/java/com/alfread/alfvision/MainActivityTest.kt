@@ -1,17 +1,13 @@
 package com.alfread.alfvision
 
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.rule.ActivityTestRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
 
-@RunWith(AndroidJUnit4::class)
 class MainActivityTest {
-    @get:Rule val activityRule = ActivityTestRule(MainActivity::class.java)
+    @get:Rule val rule = createAndroidComposeRule<MainActivity>()
 
-    @Test
-    fun activityStarts() {
-        check(!activityRule.activity.isFinishing)
+    @Test fun launches() {
+        check(!rule.activity.isFinishing)
     }
 }

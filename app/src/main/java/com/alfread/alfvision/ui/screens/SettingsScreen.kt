@@ -1,351 +1,368 @@
 package com.alfread.alfvision.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.alfread.alfvision.core.*
-import com.alfread.alfvision.core.RegionState
-import com.alfread.alfvision.data.local.AIProfileEntity
-import com.alfread.alfvision.core.AppContainer
-import com.alfread.alfvision.domain.ShizukuCompat
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.alfread.alfvision.BuildConfig
+import com.alfread.alfvision.core.model.*
 import com.alfread.alfvision.ui.MainViewModel
-import com.alfread.alfvision.util.PermissionUtils
-import kotlinx.coroutines.launch
+import com.alfread.alfvision.ui.components.*
+import com.alfread.alfvision.ui.theme.color
+import kotlin.math.roundToInt
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(
-    viewModel: MainViewModel,
-    onOpenOverlaySettings: () -> Unit,
-    onRequestMicrophone: () -> Unit,
-    onRequestNotifications: () -> Unit
-) {
-    val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val apiConfigured by viewModel.apiKeyConfigured.collectAsStateWithLifecycle()
-    val connection by viewModel.connectionStatus.collectAsStateWithLifecycle()
-    val models by viewModel.models.collectAsStateWithLifecycle()
-    val profiles by viewModel.profiles.collectAsStateWithLifecycle()
-    val regions by AppContainer.regions.observe().collectAsStateWithLifecycle(emptyList())
-    val scope = rememberCoroutineScope()
+fun SettingsScreen(vm: MainViewModel, padding: PaddingValues, onOverlay: () -> Unit) {
+    val settings by vm.settings.collectAsState()
     val context = LocalContext.current
-    var apiKey by remember { mutableStateOf("") }
+    val apiReady by vm.apiReady.collectAsState()
+    val status by vm.groqStatus.collectAsState()
+    val models by vm.models.collectAsState()
+    val profiles by vm.profiles.collectAsState()
+    val shizukuAvailable by vm.shizuku.available.collectAsState()
+    val shizukuGranted by vm.shizuku.permissionGranted.collectAsState()
+    var key by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
-    var profileDialog by remember { mutableStateOf(false) }
-    var editingProfile by remember { mutableStateOf<AIProfileEntity?>(null) }
-    var customProfileName by remember { mutableStateOf("") }
-    var customPrompt by remember { mutableStateOf("") }
-    var customTemperature by remember { mutableFloatStateOf(settings.temperature) }
-    var customMaxTokens by remember { mutableIntStateOf(settings.maxTokens) }
-    var customPreferredModel by remember { mutableStateOf(settings.selectedModel) }
-    var renameItem by remember { mutableStateOf<com.alfread.alfvision.data.local.RegionPresetEntity?>(null) }
-    var renameText by remember { mutableStateOf("") }
+    var modelExpanded by remember { mutableStateOf(false) }
+    var profileExpanded by remember { mutableStateOf(false) }
+    var showProfileCreate by remember { mutableStateOf(false) }
+    var overlayReady by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { overlayReady = Settings.canDrawOverlays(context) }
 
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Settings", style = MaterialTheme.typography.headlineSmall) }
+    LazyColumn(
+        Modifier.fillMaxSize().padding(padding),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { ScreenHeader("Settings", "Atur AI, panel, tampilan, dan privasi") }
+
+        // ------------------------------------------------------------ AI
         item {
-            SectionCard("AI") {
+            SettingsCard("AI", Icons.Default.AutoAwesome) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Groq API Key", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (apiReady) "Tersimpan" else "Belum diatur",
+                        color = if (apiReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
                 OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
+                    value = key,
+                    onValueChange = { key = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Groq API Key") },
-                    visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    label = { Text(if (apiReady) "Ganti API key" else "Masukkan API key") },
                     singleLine = true,
-                    supportingText = { Text(if (apiConfigured) "Protected with Android Keystore" else "Not configured") }
+                    visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showKey = !showKey }) {
+                            Icon(if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show or hide key")
+                        }
+                    }
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(onClick = { showKey = !showKey }) { Text(if (showKey) "Hide" else "Show") }
-                    Button(onClick = { viewModel.saveApiKey(apiKey); apiKey = "" }) { Text("Save") }
-                    OutlinedButton(onClick = viewModel::deleteApiKey) { Text("Delete") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(onClick = { vm.saveApiKey(key); key = "" }, enabled = key.isNotBlank()) { Text("Save") }
+                    OutlinedButton(onClick = vm::testConnection) { Text("Test") }
+                    TextButton(onClick = vm::deleteApiKey) { Text("Delete") }
                 }
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text("Connection: $connection", Modifier.weight(1f))
-                    Button(onClick = viewModel::testConnection, enabled = apiConfigured) { Text("Test") }
-                }
-                Text("Active model: ${settings.selectedModel}", style = MaterialTheme.typography.bodySmall)
-                Text("Last successful request: ${settings.lastSuccessfulRequest}", style = MaterialTheme.typography.bodySmall)
-                Text("Last error: ${settings.lastError}", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = viewModel::refreshModels, enabled = apiConfigured) {
-                    Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(5.dp)); Text("Refresh Models")
-                }
-                if (models.isNotEmpty()) {
-                    models.forEach { model ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(model.id, Modifier.weight(1f))
-                            TextButton(onClick = { viewModel.setModel(model.id) }) { Text(if (settings.selectedModel == model.id) "Active" else "Use") }
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            SectionCard("Response") {
-                Text("Response style")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ResponseStyle.values().forEach { style ->
-                        FilterChip(selected = settings.responseStyle == style, onClick = { viewModel.setResponseStyle(style) }, label = { Text(style.name.replace('_',' ')) })
-                    }
-                }
-                Text("Temperature: ${"%.2f".format(settings.temperature)}")
-                Slider(settings.temperature, { viewModel.setTemperature(it) }, valueRange = 0f..2f)
-                Text("Max tokens: ${settings.maxTokens}")
-                Slider(settings.maxTokens.toFloat(), { viewModel.setMaxTokens(it.toInt()) }, valueRange = 128f..8192f, steps = 31)
-            }
-        }
-        item {
-            SectionCard("Region Presets") {
-                if (regions.isEmpty()) Text("Belum ada preset. Gunakan Region di Vision/Floating Panel lalu Save.", style = MaterialTheme.typography.bodySmall)
-                regions.forEach { item ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(item.name)
-                            Text("${item.width} × ${item.height} @ ${item.x},${item.y}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        TextButton(onClick = { RegionState.current = AppContainer.regions.toRegion(item) }) { Text("Use") }
-                        TextButton(onClick = { scope.launch { AppContainer.regions.save("${item.name} Copy", AppContainer.regions.toRegion(item)) } }) { Text("Duplicate") }
-                        IconButton(onClick = { renameItem = item; renameText = item.name }) { Text("Rename") }
-                        IconButton(onClick = { scope.launch { AppContainer.regions.delete(item) } }) { Icon(Icons.Default.Delete, "Delete") }
-                    }
-                }
-            }
-        }
-        item {
-            SectionCard("AI Profiles") {
-                profiles.forEach { profile ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        RadioButton(selected = settings.activeProfile == profile.name, onClick = { viewModel.setProfile(profile.name) })
-                        Column(Modifier.weight(1f)) {
-                            Text(profile.name)
-                            Text(profile.systemPrompt.take(90), style = MaterialTheme.typography.bodySmall)
-                            Text("Model: ${profile.preferredModel} • Temp: ${"%.2f".format(profile.temperature)} • Max: ${profile.maxTokens}", style = MaterialTheme.typography.labelSmall)
-                        }
-                        IconButton(onClick = {
-                            editingProfile = profile
-                            customProfileName = profile.name
-                            customPrompt = profile.systemPrompt
-                            customTemperature = profile.temperature
-                            customMaxTokens = profile.maxTokens
-                            customPreferredModel = profile.preferredModel
-                            profileDialog = true
-                        }) { Icon(Icons.Default.Settings, "Edit profile") }
-                        IconButton(onClick = {
-                            val now = System.currentTimeMillis()
-                            scope.launch {
-                                var copyName = "${profile.name} Copy"
-                                var suffix = 2
-                                while (AppContainer.profiles.get(copyName) != null) {
-                                    copyName = "${profile.name} Copy $suffix"
-                                    suffix++
-                                }
-                                AppContainer.profiles.save(profile.copy(name = copyName, createdAt = now, updatedAt = now))
-                            }
-                        }) { Icon(Icons.Default.Add, "Duplicate profile") }
-                        if (profile.name != "General") IconButton(onClick = { scope.launch { AppContainer.profiles.delete(profile.name) } }) { Icon(Icons.Default.Delete, "Delete profile") }
-                    }
-                }
-                OutlinedButton(onClick = {
-                    editingProfile = null
-                    customProfileName = ""
-                    customPrompt = ""
-                    customTemperature = settings.temperature
-                    customMaxTokens = settings.maxTokens
-                    customPreferredModel = settings.selectedModel
-                    profileDialog = true
-                }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(5.dp)); Text("Create profile") }
-            }
-        }
-        item {
-            SectionCard("Vision") {
-                SettingSwitch("Send Only Selected Region", settings.sendOnlySelectedRegion, viewModel::setSendOnlyRegion)
-                SettingSwitch("Auto Analyze", settings.autoAnalyze, viewModel::setAutoAnalyze)
-                Text("Auto analyze interval")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    listOf(500 to "0.5s", 1000 to "1s", 2000 to "2s", 5000 to "5s", 10000 to "10s", 30000 to "30s").forEach { (value, label) -> FilterChip(selected = settings.autoAnalyzeIntervalMs == value, onClick = { viewModel.setAutoAnalyzeIntervalMs(value) }, label = { Text(label) }) }
-                }
-                SettingSwitch("Gaming Mode", settings.gamingMode, viewModel::setGamingMode)
-                Text("Capture quality: ${settings.captureQuality}")
-                Slider(settings.captureQuality.toFloat(), { viewModel.setCaptureQuality(it.toInt()) }, valueRange = 50f..100f, steps = 9)
-                Text("Default is Capture Once. Auto mode should be enabled deliberately because it can consume battery, bandwidth, and API quota.", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item {
-            SectionCard("Floating") {
-                Text("Opacity: ${"%.2f".format(settings.opacity)}")
-                Slider(settings.opacity, { viewModel.setOpacity(it) }, valueRange = 0.35f..1f)
-                SettingSwitch("Snap to edge", settings.snap, viewModel::setSnap)
-                SettingSwitch("Lock position", settings.lockPosition, viewModel::setLockPosition)
-                SettingSwitch("Animation", settings.animation, viewModel::setAnimation)
-                SettingSwitch("Auto hide", settings.autoHide, viewModel::setAutoHide)
-                SettingSwitch("Blur / frosted visual", settings.blur, viewModel::setBlur)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PanelStyle.values().forEach { style -> FilterChip(selected = settings.panelStyle == style, onClick = { viewModel.setPanelStyle(style) }, label = { Text(style.name) }) }
-                }
-            }
-        }
-        item {
-            SectionCard("Appearance") {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ThemeMode.values().forEach { mode -> FilterChip(selected = settings.theme == mode, onClick = { viewModel.setTheme(mode) }, label = { Text(mode.name) }) }
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AccentColor.values().forEach { accent -> FilterChip(selected = settings.accent == accent, onClick = { viewModel.setAccent(accent) }, label = { Text(accent.name) }) }
-                }
-            }
-        }
-        item {
-            SectionCard("Privacy") {
-                SettingSwitch("Save conversations", settings.saveHistory, viewModel::setSaveHistory)
-                SettingSwitch("Save screenshots", settings.saveScreenshots, viewModel::setSaveScreenshots)
-                Text("Auto delete")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    AutoDeletePeriod.values().forEach { period -> FilterChip(selected = settings.autoDelete == period, onClick = { viewModel.setAutoDelete(period) }, label = { Text(period.name.replace('_',' ')) }) }
-                }
-                Text("Screenshots are not permanently stored by default. Images are sent only when a request is made.", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(onClick = { scope.launch { AppContainer.history.deleteAll() } }) { Text("Clear History") }
-                    OutlinedButton(onClick = { context.filesDir.resolve("screenshots").deleteRecursively() }) { Text("Clear Screenshots") }
-                    OutlinedButton(onClick = { context.cacheDir.deleteRecursively() }) { Text("Clear Cache") }
-                }
-                OutlinedButton(onClick = viewModel::deleteApiKey) { Text("Delete API Key") }
-            }
-        }
-        item {
-            SectionCard("Permissions") {
-                PermissionButton("Overlay permission", PermissionUtils.overlayGranted(androidx.compose.ui.platform.LocalContext.current)) { onOpenOverlaySettings() }
-                PermissionButton("Microphone", PermissionUtils.microphoneGranted(androidx.compose.ui.platform.LocalContext.current)) { onRequestMicrophone() }
-                PermissionButton("Notifications", PermissionUtils.notificationsGranted(androidx.compose.ui.platform.LocalContext.current)) { onRequestNotifications() }
-            }
-        }
-        item {
-            SectionCard("Advanced") {
-                Text("Network timeout: ${settings.timeoutSeconds}s")
-                Slider(settings.timeoutSeconds.toFloat(), { viewModel.setTimeout(it.toInt()) }, valueRange = 10f..120f, steps = 21)
-                Text("Retry count: ${settings.retryCount}")
-                Slider(settings.retryCount.toFloat(), { viewModel.setRetryCount(it.toInt()) }, valueRange = 0f..5f, steps = 4)
-                SettingSwitch("Debug mode", settings.debugMode, viewModel::setDebug)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Shizuku")
-                        Text(ShizukuCompat(androidx.compose.ui.platform.LocalContext.current).statusText(), style = MaterialTheme.typography.bodySmall)
-                    }
-                    Icon(Icons.Default.Security, null)
-                }
-                Text(ShizukuCompat(androidx.compose.ui.platform.LocalContext.current).enhancedModeExplanation(), style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item {
-            SectionCard("About") {
-                Text("ALF Vision Panel 1.0.0")
-                Text("Native Kotlin + Jetpack Compose + Material 3")
-                Text("Privacy: screen capture is user-triggered through MediaProjection. No backend stores your API key.", style = MaterialTheme.typography.bodySmall)
-                Text("Groq vision default: ${Constants.DEFAULT_MODEL}", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
+                status?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
 
-    if (renameItem != null) {
-        AlertDialog(
-            onDismissRequest = { renameItem = null },
-            confirmButton = {
-                Button(onClick = {
-                    val item = renameItem
-                    if (item != null && renameText.isNotBlank()) scope.launch {
-                        AppContainer.regions.update(item.copy(name = renameText.trim()))
-                        renameItem = null
-                    }
-                }) { Text("Save") }
-            },
-            dismissButton = { TextButton(onClick = { renameItem = null }) { Text("Cancel") } },
-            title = { Text("Rename region") },
-            text = { OutlinedTextField(renameText, { renameText = it }, label = { Text("Name") }, singleLine = true) }
-        )
-    }
-
-    if (profileDialog) {
-        AlertDialog(
-            onDismissRequest = { profileDialog = false; editingProfile = null },
-            confirmButton = {
-                Button(onClick = {
-                    if (customProfileName.isNotBlank() && customPrompt.isNotBlank()) {
-                        val now = System.currentTimeMillis()
-                        val old = editingProfile
-                        scope.launch {
-                            if (old != null && old.name != customProfileName.trim()) {
-                                AppContainer.profiles.delete(old.name)
-                            }
-                            val profile = AIProfileEntity(
-                                name = customProfileName.trim(),
-                                systemPrompt = customPrompt.trim(),
-                                temperature = customTemperature.coerceIn(0f, 2f),
-                                maxTokens = customMaxTokens.coerceIn(128, 16384),
-                                preferredModel = customPreferredModel.trim().ifBlank { settings.selectedModel },
-                                createdAt = old?.createdAt ?: now,
-                                updatedAt = now
+                val visionModels = models.filter { it.supportsVision }.ifEmpty { models }
+                ExposedDropdownMenuBox(expanded = modelExpanded, onExpandedChange = { modelExpanded = !modelExpanded }) {
+                    OutlinedTextField(
+                        value = settings.activeModel, onValueChange = {}, readOnly = true, label = { Text("Model") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(modelExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = modelExpanded, onDismissRequest = { modelExpanded = false }) {
+                        if (visionModels.isEmpty()) {
+                            DropdownMenuItem(text = { Text("Tekan Test untuk memuat model") }, onClick = { modelExpanded = false })
+                        }
+                        visionModels.forEach { model ->
+                            DropdownMenuItem(
+                                text = { Text(model.id) },
+                                onClick = { vm.updateSettings { it.copy(activeModel = model.id) }; modelExpanded = false }
                             )
-                            AppContainer.profiles.save(profile)
-                            viewModel.setProfile(profile.name)
-                            profileDialog = false
-                            editingProfile = null
-                            customProfileName = ""
-                            customPrompt = ""
-                        }
-                    }
-                }) { Text(if (editingProfile == null) "Create" else "Save") }
-            },
-            dismissButton = { TextButton(onClick = { profileDialog = false; editingProfile = null }) { Text("Cancel") } },
-            title = { Text(if (editingProfile == null) "Create AI Profile" else "Edit AI Profile") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(customProfileName, { customProfileName = it }, label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(customPrompt, { customPrompt = it }, label = { Text("System prompt") }, minLines = 4)
-                    OutlinedTextField(customPreferredModel, { customPreferredModel = it }, label = { Text("Preferred model") }, singleLine = true)
-                    Text("Temperature: ${"%.2f".format(customTemperature)}")
-                    Slider(customTemperature, { customTemperature = it }, valueRange = 0f..2f)
-                    Text("Max tokens: $customMaxTokens")
-                    Slider(customMaxTokens.toFloat(), { customMaxTokens = it.toInt() }, valueRange = 128f..8192f, steps = 31)
-                    if (models.isNotEmpty()) {
-                        Text("Available active models", style = MaterialTheme.typography.labelMedium)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            models.take(10).forEach { model ->
-                                FilterChip(
-                                    selected = customPreferredModel == model.id,
-                                    onClick = { customPreferredModel = model.id },
-                                    label = { Text(model.id.take(26), style = MaterialTheme.typography.labelSmall) }
-                                )
-                            }
                         }
                     }
                 }
             }
-        )
+        }
+
+        item {
+            SettingsCard("Response", Icons.Default.Tune) {
+                EnumDropdown("Style", settings.responseStyle.label, ResponseStyle.entries) { s -> vm.updateSettings { it.copy(responseStyle = s) } }
+                SliderRow("Temperature", settings.temperature, 0f..2f) { v -> vm.updateSettings { it.copy(temperature = v) } }
+                SliderRow("Max tokens", settings.maxTokens.toFloat(), 128f..16384f, format = { it.roundToInt().toString() }) { v ->
+                    vm.updateSettings { it.copy(maxTokens = v.roundToInt()) }
+                }
+                val selected = profiles.firstOrNull { it.id == settings.activeProfileId }?.name ?: profiles.firstOrNull()?.name ?: "General"
+                ExposedDropdownMenuBox(expanded = profileExpanded, onExpandedChange = { profileExpanded = !profileExpanded }) {
+                    OutlinedTextField(
+                        value = selected, onValueChange = {}, readOnly = true, label = { Text("Active profile") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(profileExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = profileExpanded, onDismissRequest = { profileExpanded = false }) {
+                        profiles.forEach { p ->
+                            DropdownMenuItem(text = { Text(p.name) }, onClick = { vm.updateSettings { it.copy(activeProfileId = p.id) }; profileExpanded = false })
+                        }
+                        DropdownMenuItem(text = { Text("Create custom profile") }, onClick = { profileExpanded = false; showProfileCreate = true })
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------ VISION & PANEL
+        item {
+            SettingsCard("Vision", Icons.Default.Visibility) {
+                SwitchRow("Auto Analyze", settings.vision.autoAnalyze, supporting = "Capture + analyze otomatis sesuai interval") { c ->
+                    vm.updateSettings { it.copy(vision = it.vision.copy(autoAnalyze = c)) }
+                }
+                if (settings.vision.autoAnalyze) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AutoAnalyzeInterval.entries.forEach { interval ->
+                            FilterChip(
+                                selected = settings.vision.interval == interval,
+                                onClick = { vm.updateSettings { it.copy(vision = it.vision.copy(interval = interval)) } },
+                                label = { Text(interval.label) }
+                            )
+                        }
+                    }
+                }
+                SwitchRow("Freeze Frame", settings.vision.freezeFrame) { c -> vm.updateSettings { it.copy(vision = it.vision.copy(freezeFrame = c)) } }
+                SwitchRow("Screenshot Preview", settings.vision.screenshotPreview) { c -> vm.updateSettings { it.copy(vision = it.vision.copy(screenshotPreview = c)) } }
+                SwitchRow("Save Screenshots", settings.vision.saveScreenshots) { c -> vm.updateSettings { it.copy(vision = it.vision.copy(saveScreenshots = c)) } }
+                SwitchRow("Send only selected region", settings.vision.sendOnlyRegion) { c -> vm.updateSettings { it.copy(vision = it.vision.copy(sendOnlyRegion = c)) } }
+                SliderRow("JPEG quality", settings.vision.quality.toFloat(), 40f..100f, format = { "${it.roundToInt()}%" }) { v ->
+                    vm.updateSettings { it.copy(vision = it.vision.copy(quality = v.roundToInt())) }
+                }
+            }
+        }
+
+        item {
+            SettingsCard("Floating panel", Icons.Default.Layers) {
+                SliderRow("Opacity", settings.floating.opacity, 0.55f..1f, format = { "${(it * 100).roundToInt()}%" }) { v ->
+                    vm.updateSettings { it.copy(floating = it.floating.copy(opacity = v)) }
+                }
+                SliderRow("Orb size", settings.floating.orbSizeDp.toFloat(), 44f..96f, format = { "${it.roundToInt()} dp" }) { v ->
+                    vm.updateSettings { it.copy(floating = it.floating.copy(orbSizeDp = v.roundToInt())) }
+                }
+                SliderRow("Panel width", settings.floating.panelWidthDp.toFloat(), 280f..520f, format = { "${it.roundToInt()} dp" }) { v ->
+                    vm.updateSettings { it.copy(floating = it.floating.copy(panelWidthDp = v.roundToInt())) }
+                }
+                SliderRow("Panel height", settings.floating.panelHeightDp.toFloat(), 300f..820f, format = { "${it.roundToInt()} dp" }) { v ->
+                    vm.updateSettings { it.copy(floating = it.floating.copy(panelHeightDp = v.roundToInt())) }
+                }
+                Text("Ukuran berlaku saat panel dibuka ulang.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SwitchRow("Snap to edge", settings.floating.snapToEdge) { c -> vm.updateSettings { it.copy(floating = it.floating.copy(snapToEdge = c)) } }
+                SwitchRow("Lock position", settings.floating.locked) { c -> vm.updateSettings { it.copy(floating = it.floating.copy(locked = c)) } }
+                SwitchRow("Compact mode", settings.floating.compactMode) { c -> vm.updateSettings { it.copy(floating = it.floating.copy(compactMode = c)) } }
+                SwitchRow("Auto hide", settings.floating.autoHide) { c -> vm.updateSettings { it.copy(floating = it.floating.copy(autoHide = c)) } }
+            }
+        }
+
+        // ------------------------------------------------------------ APPEARANCE
+        item {
+            SettingsCard("Appearance", Icons.Default.Palette) {
+                Text("Theme", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = settings.theme == mode,
+                            onClick = { vm.updateSettings { it.copy(theme = mode) } },
+                            label = { Text(mode.label) }
+                        )
+                    }
+                }
+                Text("Accent", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Accent.entries.forEach { item ->
+                        val selected = item == settings.accent
+                        Box(
+                            Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(item.color())
+                                .border(if (selected) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                .clickable { vm.updateSettings { it.copy(accent = item) } },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selected) Icon(Icons.Default.Check, item.label, tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------ PRIVACY & PERMISSIONS
+        item {
+            SettingsCard("Privacy", Icons.Default.Security) {
+                SwitchRow("Save conversations", settings.saveHistory) { c -> vm.updateSettings { it.copy(saveHistory = c) } }
+                Text("Auto delete", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0, 1, 7, 30).forEach { days ->
+                        FilterChip(
+                            selected = settings.autoDeleteDays == days,
+                            onClick = { vm.updateSettings { it.copy(autoDeleteDays = days) }; vm.cleanupHistory(days) },
+                            label = { Text(if (days == 0) "Never" else "$days day${if (days == 1) "" else "s"}") }
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { vm.clearHistory() }) {
+                        Icon(Icons.Default.DeleteSweep, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Clear history")
+                    }
+                    OutlinedButton(onClick = vm::clearScreenshots) { Text("Clear screenshots") }
+                }
+            }
+        }
+
+        item {
+            SettingsCard("Permissions", Icons.Default.Lock) {
+                PermissionRow("Overlay", overlayReady) { onOverlay() }
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Icon(Icons.Default.Notifications, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Notification settings") }
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Icon(Icons.Default.Mic, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("App permissions (mikrofon)") }
+            }
+        }
+
+        item {
+            SettingsCard("Advanced", Icons.Default.Settings) {
+                SwitchRow("Debug logging", settings.debugLogging) { c -> vm.updateSettings { it.copy(debugLogging = c) } }
+                Text(
+                    "Shizuku: " + when {
+                        !shizukuAvailable -> "Not available"
+                        shizukuGranted -> "Connected / permission granted"
+                        else -> "Connected / permission not granted"
+                    },
+                    fontSize = 13.sp
+                )
+                Text(
+                    "Shizuku bersifat opsional dan tidak menggantikan MediaProjection atau melewati keamanan Android.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp
+                )
+            }
+        }
+
+        item {
+            SettingsCard("About", Icons.Default.Info) {
+                Text("ALF Vision Panel ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Native Kotlin + Jetpack Compose + Material 3. Request Groq dikirim langsung dari perangkat lewat HTTPS.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp
+                )
+            }
+        }
+    }
+    if (showProfileCreate) ProfileDialog(vm, onDismiss = { showProfileCreate = false })
+}
+
+@Composable
+private fun SettingsCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable ColumnScope.() -> Unit) {
+    AlfCard {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(icon, MaterialTheme.colorScheme.primary, size = 34)
+                Spacer(Modifier.width(10.dp))
+                Text(title, style = MaterialTheme.typography.titleMedium)
+            }
+            content()
+        }
     }
 }
 
 @Composable
-private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = { Text(title, style = MaterialTheme.typography.titleMedium); content() }) }
+private fun PermissionRow(label: String, granted: Boolean, onFix: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            if (granted) Icons.Default.CheckCircle else Icons.Default.Warning, null,
+            tint = if (granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text("$label permission", Modifier.weight(1f))
+        if (!granted) TextButton(onClick = onFix) { Text("Aktifkan") } else Text("Aktif", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T : Enum<T>> EnumDropdown(label: String, selected: String, entries: List<T>, onSelect: (T) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
+        OutlinedTextField(
+            selected, {}, readOnly = true, label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth()
+        )
+        ExposedDropdownMenu(expanded, { expanded = false }) {
+            entries.forEach { e ->
+                DropdownMenuItem(
+                    text = { Text((e as? ResponseStyle)?.label ?: (e as? ThemeMode)?.label ?: e.name) },
+                    onClick = { onSelect(e); expanded = false }
+                )
+            }
+        }
+    }
 }
 
 @Composable
-private fun SettingSwitch(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(title); Switch(checked, onChange) }
-}
-
-@Composable
-private fun PermissionButton(title: String, granted: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(title); AssistChip(onClick = onClick, label = { Text(if (granted) "Granted" else "Grant") }) }
+private fun ProfileDialog(vm: MainViewModel, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var prompt by remember { mutableStateOf("You are a helpful ALF Vision assistant.") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create profile") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") })
+                OutlinedTextField(prompt, { prompt = it }, label = { Text("System prompt") }, minLines = 3)
+            }
+        },
+        confirmButton = { TextButton(onClick = { if (name.isNotBlank()) vm.createProfile(name.trim(), prompt.trim()); onDismiss() }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
