@@ -98,7 +98,8 @@ fun AnnotationEditorDialog(
                                     start = null; current = null
                                 }
                             )
-                        }
+                        },
+                        onDraw = {}
                     )
                 }
             }

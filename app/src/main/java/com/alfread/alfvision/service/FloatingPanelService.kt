@@ -30,16 +30,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.awaitPointerEvent
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.setContent
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import com.alfread.alfvision.R
 import com.alfread.alfvision.core.*
@@ -604,51 +600,21 @@ private fun FloatingOrbContent(
     onLongPress: () -> Unit,
     onMove: (Float, Float) -> Unit
 ) {
-    var lastTap by remember { mutableLongStateOf(0L) }
-    var dragging by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier.fillMaxSize()
             .clip(CircleShape)
             .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)))
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var moved = false
-                    var lastX = down.position.x
-                    var lastY = down.position.y
-                    val timeout = viewConfiguration.longPressTimeoutMillis.toLong()
-                    val longJob = launch {
-                        delay(timeout)
-                        if (!moved) onLongPress()
-                    }
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull() ?: break
-                        if (!change.pressed) break
-                        val dx = change.position.x - lastX
-                        val dy = change.position.y - lastY
-                        if (kotlin.math.abs(dx) > 1f || kotlin.math.abs(dy) > 1f) {
-                            moved = true
-                            longJob.cancel()
-                            dragging = true
-                            onMove(dx, dy)
-                            change.consume()
-                        }
-                        lastX = change.position.x
-                        lastY = change.position.y
-                    }
-                    longJob.cancel()
-                    if (!moved) {
-                        val now = System.currentTimeMillis()
-                        if (now - lastTap < 320L) {
-                            lastTap = 0L
-                            onDoubleTap()
-                        } else {
-                            lastTap = now
-                            onTap()
-                        }
-                    }
-                    dragging = false
+                androidx.compose.foundation.gestures.detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = { onDoubleTap() },
+                    onLongPress = { onLongPress() }
+                )
+            }
+            .pointerInput(Unit) {
+                detectDragGestures { change, drag ->
+                    change.consume()
+                    onMove(drag.x, drag.y)
                 }
             },
         contentAlignment = Alignment.Center
@@ -684,6 +650,7 @@ private fun RegionSelectorContent(
         }
         val current = rect ?: return@BoxWithConstraints
 
+        val regionColor = MaterialTheme.colorScheme.primary
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -722,7 +689,6 @@ private fun RegionSelectorContent(
                     )
                 }
         ) {
-            val regionColor = MaterialTheme.colorScheme.primary
             if (!hideBorder) {
                 drawRoundRect(
                     color = regionColor.copy(alpha = opacity.coerceIn(0.15f, 1f)),

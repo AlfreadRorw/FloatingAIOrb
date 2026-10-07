@@ -7,6 +7,7 @@ import com.alfread.alfvision.data.local.ConversationEntity
 import com.alfread.alfvision.data.local.MessageEntity
 import com.alfread.alfvision.data.prefs.AppPreferences
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import java.io.File
 
 class HistoryRepository(

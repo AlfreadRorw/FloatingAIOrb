@@ -123,10 +123,12 @@ class ScreenCaptureService : Service() {
                 if (bitmap != null) {
                     val region = pendingRegion
                     pendingRegion = null
-                    val useRegion = AppContainer.preferences.snapshot().sendOnlySelectedRegion
-                    val output = if (useRegion) AppContainer.visionAnalyzer.prepareRegion(bitmap, region) else bitmap
-                    if (output !== bitmap) bitmap.recycle()
-                    VisionEventBus.publish(CapturedFrame(output, output.width, output.height, region))
+                    scope.launch {
+                        val useRegion = AppContainer.preferences.snapshot().sendOnlySelectedRegion
+                        val output = if (useRegion) AppContainer.visionAnalyzer.prepareRegion(bitmap, region) else bitmap
+                        if (output !== bitmap) bitmap.recycle()
+                        VisionEventBus.publish(CapturedFrame(output, output.width, output.height, region))
+                    }
                 }
             } finally {
                 image.close()

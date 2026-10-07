@@ -47,9 +47,10 @@ class GroqApiClient(
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
+        val timeoutSeconds = preferences.snapshot().timeoutSeconds
+
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
-            val timeoutSeconds = preferences.snapshot().timeoutSeconds
             call.timeout().timeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
