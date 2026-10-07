@@ -49,6 +49,9 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+      # GitHub Actions does not allow the secrets context directly in an if expression.
+      # Check the secrets in a normal step, expose only a boolean output, and use that
+      # output for the conditional release steps below.
       - name: Check release signing configuration
         id: signing
         shell: bash
