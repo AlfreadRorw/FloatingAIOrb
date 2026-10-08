@@ -150,6 +150,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun answerScreen() {
+        c.controller.answerScreen()
+    }
+
+    fun clearImage() {
+        c.sessionStore.clearImage()
+    }
+
     fun stopVoice() {
         c.voiceInputManager.stop()
     }

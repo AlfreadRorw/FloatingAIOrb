@@ -1,5 +1,7 @@
 package com.alfread.alfvision.vision
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Base64
 import com.alfread.alfvision.core.model.*
 import com.alfread.alfvision.data.network.GroqApiException
@@ -99,7 +101,7 @@ class VisionAssistantController(
                 val current = (session.currentImage.value ?: session.pinnedImage.value)?.bytes
                 val previous = if (compare) session.previousImage.value?.bytes else null
                 val imagePath = if (currentSettings.vision.saveScreenshots && current != null) imageStorage.save(current, "history") else null
-                session.addUser(cleaned, imagePath)
+                session.addUser(cleaned, imagePath, current?.let { makeThumbnail(it) })
                 if (session.input.value.trim() == cleaned) session.setInput("")
                 if (currentSettings.saveHistory) ensureConversation(profile?.id ?: 0, cleaned)
                 val recent = session.lines.value.takeLast(30)
@@ -145,6 +147,11 @@ class VisionAssistantController(
         "Find Error" -> "Find possible errors or abnormal behavior visible in this screen area. Explain evidence and fixes."
         "Extract Text" -> "Extract visible text exactly as readable. Return text only, with sensible line breaks."
         "Describe" -> "Describe the visible screen area precisely and briefly."
+        "Jawab Soal" -> "Lihat layar ini. Temukan SEMUA soal atau pertanyaan yang terlihat (pilihan ganda, benar/salah, isian, hitungan, esai singkat). " +
+            "Untuk setiap soal tulis: nomor soal, lalu JAWABAN AKHIR lebih dulu (untuk pilihan ganda tulis huruf dan isinya), " +
+            "kemudian alasan singkat 1-2 kalimat atau langkah hitungan ringkas. " +
+            "Jika soal terpotong atau tidak terbaca jelas, katakan bagian mana yang kurang. " +
+            "Jawab dalam bahasa yang sama dengan soalnya. Tulis teks biasa tanpa simbol markdown."
         "Help Me" -> "Based on this screen area, tell me what I should do next. Give practical steps and do not invent hidden information."
         else -> action
     }
@@ -152,6 +159,27 @@ class VisionAssistantController(
     fun quickAction(action: String) {
         ask(promptFor(action))
     }
+
+    /** Satu tombol: ambil layar lalu langsung jawab soal yang terlihat. */
+    fun answerScreen() {
+        scope.launch {
+            val region = session.region.value
+            if (captureNow(region, region == null)) ask(promptFor("Jawab Soal"))?.join()
+        }
+    }
+
+    private fun makeThumbnail(bytes: ByteArray): ByteArray? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (bounds.outWidth / sample > 720) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return@runCatching null
+        val out = java.io.ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+        bitmap.recycle()
+        out.toByteArray()
+    }.getOrNull()
 
     fun compare() {
         val current = session.currentImage.value
@@ -206,7 +234,8 @@ class VisionAssistantController(
             ResponseStyle.TECHNICAL -> "Use precise technical terminology and implementation-level detail when relevant."
             ResponseStyle.STEP_BY_STEP -> "Answer using numbered step-by-step instructions when actions are needed."
         }
-        return listOf(profile?.systemPrompt ?: "You are ALF Vision, a helpful screen assistant.", styleText).joinToString(" ")
+        val plain = "Write in plain text. Do not use markdown symbols such as asterisks, pound signs or backticks; use simple numbered lines or dashes instead."
+        return listOf(profile?.systemPrompt ?: "You are ALF Vision, a helpful screen assistant.", styleText, plain).joinToString(" ")
     }
 
     private fun errorMessage(t: Throwable): String = when (t) {

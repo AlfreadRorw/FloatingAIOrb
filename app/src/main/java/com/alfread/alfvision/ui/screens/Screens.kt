@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -139,15 +141,15 @@ fun HomeScreen(
 
         SectionLabel("Quick actions")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionTile(Icons.Default.Chat, "Chat", Modifier.weight(1f)) { onNavigate(Dest.Chat.route) }
+            ActionTile(Icons.AutoMirrored.Filled.Chat, "Chat", Modifier.weight(1f)) { onNavigate(Dest.Chat.route) }
             ActionTile(Icons.Default.CameraAlt, "Capture", Modifier.weight(1f)) { vm.capture() }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionTile(Icons.Default.Crop, "Region", Modifier.weight(1f)) {
                 if (overlayReady) vm.showRegionSelector() else onOverlay()
             }
-            ActionTile(Icons.Default.AutoAwesome, "Analyze", Modifier.weight(1f)) {
-                vm.quickAction("Analyze")
+            ActionTile(Icons.Default.AutoAwesome, "Jawab Soal", Modifier.weight(1f)) {
+                vm.answerScreen()
                 onNavigate(Dest.Chat.route)
             }
         }
@@ -314,6 +316,13 @@ fun ChatScreen(vm: MainViewModel, padding: PaddingValues, onRequestMicrophone: (
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            AssistChip(
+                onClick = { vm.answerScreen() },
+                label = { Text("Jawab Soal", color = Color.White) },
+                leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(16.dp)) },
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primary),
+                border = null
+            )
             listOf("Analyze", "Explain", "Read", "Translate", "Summarize", "Find Error", "Extract Text", "Describe", "Help Me").forEach { action ->
                 AssistChip(onClick = { vm.quickAction(action) }, label = { Text(action) })
             }
@@ -330,6 +339,28 @@ fun ChatScreen(vm: MainViewModel, padding: PaddingValues, onRequestMicrophone: (
             items(lines, key = { it.id }) { line -> MessageBubble(line) }
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+        image?.let { attached ->
+            val thumb = remember(attached.bytes) {
+                val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                BitmapFactory.decodeByteArray(attached.bytes, 0, attached.bytes.size, options)?.asImageBitmap()
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)).padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                thumb?.let {
+                    androidx.compose.foundation.Image(
+                        it, "Gambar terlampir",
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("Gambar layar terlampir (${attached.label})", Modifier.weight(1f), fontSize = 13.sp)
+                IconButton(onClick = { vm.clearImage() }) { Icon(Icons.Default.Close, "Lepas gambar") }
+            }
+        }
         error?.let {
             InfoBanner(it, Modifier.padding(vertical = 4.dp), actionLabel = "Retry", onAction = { vm.retryLast() }, onDismiss = { vm.session.setError(null) })
         }
@@ -360,7 +391,7 @@ fun ChatScreen(vm: MainViewModel, padding: PaddingValues, onRequestMicrophone: (
                     onClick = { if (busy) vm.stopRequest() else vm.ask(input) },
                     enabled = busy || input.isNotBlank()
                 ) {
-                    Icon(if (busy) Icons.Default.Stop else Icons.Default.Send, if (busy) "Stop" else "Send", tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (busy) Icons.Default.Stop else Icons.AutoMirrored.Filled.Send, if (busy) "Stop" else "Send", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -381,7 +412,7 @@ private fun MessageBubble(line: ChatLine) {
             modifier = Modifier.widthIn(max = 340.dp)
         ) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                SelectionContainer { Text(line.content, fontSize = 14.sp) }
+                SelectionContainer { MessageContent(line, textColor, MaterialTheme.colorScheme.surface.copy(alpha = 0.5f), textSize = 15) }
                 if (!isUser) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val meta = listOfNotNull(line.model, line.tokenUsage?.takeIf { it > 0 }?.let { "$it tok" }).joinToString(" - ")

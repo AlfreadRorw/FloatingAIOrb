@@ -191,3 +191,9 @@ The initial release keeps Room schema export disabled because the database is ve
 - Home baru: hero card, status tile, quick actions, tombol START/STOP VISION.
 - Panel overlay baru dengan dockbar sendiri (Chat, Tools, Setup, App), orb dengan tap / double tap / long press, drag memakai koordinat raw layar.
 - Settings dikelompokkan dalam kartu, slider hanya menyimpan saat dilepas.
+
+## Changelog 1.2.0
+- **Jawab Soal**: satu aksi untuk capture layar lalu menjawab semua soal yang terlihat (nomor, jawaban akhir, alasan singkat). Tersedia di chip chat, tab Tools panel, Home, dan double tap pada orb.
+- Gambar layar bisa dilampirkan langsung di chat (tombol kamera di input panel), terlihat sebagai pratinjau + thumbnail di bubble, dan bisa dilepas.
+- Teks chat di panel overlay diperbaiki (warna konten eksplisit, latar bubble solid, line height rapat).
+- Jawaban AI dirender dari markdown (bold, italic, bullet, heading, kode) tanpa simbol `*`, dan prompt sistem meminta teks biasa.

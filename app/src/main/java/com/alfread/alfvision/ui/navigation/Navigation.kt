@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -36,7 +37,7 @@ import com.alfread.alfvision.ui.screens.*
 sealed class Dest(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     data object Home : Dest("home", "Home", Icons.Default.Home)
     data object Vision : Dest("vision", "Vision", Icons.Default.Visibility)
-    data object Chat : Dest("chat", "Chat", Icons.Default.Chat)
+    data object Chat : Dest("chat", "Chat", Icons.AutoMirrored.Filled.Chat)
     data object History : Dest("history", "History", Icons.Default.History)
     data object Settings : Dest("settings", "Settings", Icons.Default.Settings)
 }

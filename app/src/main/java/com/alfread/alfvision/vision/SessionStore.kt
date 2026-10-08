@@ -25,7 +25,7 @@ class SessionStore {
     val voiceState: StateFlow<VoiceState> = _voiceState
 
     fun setInput(value: String) { _input.value = value }
-    fun addUser(text: String, imagePath: String? = null) { _lines.value = _lines.value + ChatLine(System.nanoTime(), Role.USER, text, imagePath = imagePath) }
+    fun addUser(text: String, imagePath: String? = null, imageBytes: ByteArray? = null) { _lines.value = _lines.value + ChatLine(System.nanoTime(), Role.USER, text, imagePath = imagePath, imageBytes = imageBytes) }
     fun addAssistant(text: String, model: String, usage: ModelUsage, imagePath: String? = null) { _lines.value = _lines.value + ChatLine(System.nanoTime(), Role.ASSISTANT, text, model = model, tokenUsage = usage.totalTokens, imagePath = imagePath) }
     fun clearChat() { _lines.value = emptyList() }
     fun removeLastAssistant() { if (_lines.value.lastOrNull()?.role == Role.ASSISTANT) _lines.value = _lines.value.dropLast(1) }
@@ -35,6 +35,7 @@ class SessionStore {
     fun setError(value: String?) { _error.value = value }
     fun setVoiceState(value: VoiceState) { _voiceState.value = value }
     fun setImage(value: PendingImage) { _previousImage.value = _currentImage.value; _currentImage.value = value }
+    fun clearImage() { _currentImage.value = null }
     fun pinCurrent() { _pinnedImage.value = _currentImage.value }
     fun unpin() { _pinnedImage.value = null }
 }

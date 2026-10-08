@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.first
 class AppContainer(context: Context) {
     val appContext = context.applicationContext
     val database: AppDatabase = Room.databaseBuilder(appContext, AppDatabase::class.java, "alf_vision.db")
-        .fallbackToDestructiveMigration()
+        .fallbackToDestructiveMigration(dropAllTables = true)
         .build()
     val secureStore = SecureStore(appContext)
     val settingsRepository = SettingsRepository(appContext, database.appSettingsDao())

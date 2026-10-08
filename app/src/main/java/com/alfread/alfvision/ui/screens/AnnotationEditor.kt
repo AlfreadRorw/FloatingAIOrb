@@ -11,6 +11,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -63,8 +66,8 @@ fun AnnotationEditor(
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
             Text("Annotate", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            IconButton(onClick = { if (marks.isNotEmpty()) { redo = redo + marks.last(); marks = marks.dropLast(1) } }) { Icon(Icons.Default.Undo, "Undo") }
-            IconButton(onClick = { if (redo.isNotEmpty()) { marks = marks + redo.last(); redo = redo.dropLast(1) } }) { Icon(Icons.Default.Redo, "Redo") }
+            IconButton(onClick = { if (marks.isNotEmpty()) { redo = redo + marks.last(); marks = marks.dropLast(1) } }) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
+            IconButton(onClick = { if (redo.isNotEmpty()) { marks = marks + redo.last(); redo = redo.dropLast(1) } }) { Icon(Icons.AutoMirrored.Filled.Redo, "Redo") }
             Button(onClick = {
                 // FIX: koordinat mark (ruang canvas) dikonversi ke ruang bitmap asli.
                 val scaleX = if (canvasSize.width > 0) bitmap.width.toFloat() / canvasSize.width else 1f
@@ -78,7 +81,7 @@ fun AnnotationEditor(
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ToolChip("Rect", Tool.RECTANGLE, tool, Icons.Default.CropSquare) { tool = it }
             ToolChip("Circle", Tool.CIRCLE, tool, Icons.Default.Circle) { tool = it }
-            ToolChip("Arrow", Tool.ARROW, tool, Icons.Default.ArrowForward) { tool = it }
+            ToolChip("Arrow", Tool.ARROW, tool, Icons.AutoMirrored.Filled.ArrowForward) { tool = it }
             ToolChip("Line", Tool.LINE, tool, Icons.Default.Minimize) { tool = it }
             ToolChip("Text", Tool.TEXT, tool, Icons.Default.TextFields) { tool = it }
             ToolChip("Blur", Tool.BLUR, tool, Icons.Default.BlurOn) { tool = it }

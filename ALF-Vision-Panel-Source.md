@@ -218,6 +218,12 @@ The initial release keeps Room schema export disabled because the database is ve
 - Panel overlay baru dengan dockbar sendiri (Chat, Tools, Setup, App), orb dengan tap / double tap / long press, drag memakai koordinat raw layar.
 - Settings dikelompokkan dalam kartu, slider hanya menyimpan saat dilepas.
 
+## Changelog 1.2.0
+- **Jawab Soal**: satu aksi untuk capture layar lalu menjawab semua soal yang terlihat (nomor, jawaban akhir, alasan singkat). Tersedia di chip chat, tab Tools panel, Home, dan double tap pada orb.
+- Gambar layar bisa dilampirkan langsung di chat (tombol kamera di input panel), terlihat sebagai pratinjau + thumbnail di bubble, dan bisa dilepas.
+- Teks chat di panel overlay diperbaiki (warna konten eksplisit, latar bubble solid, line height rapat).
+- Jawaban AI dirender dari markdown (bold, italic, bullet, heading, kode) tanpa simbol `*`, dan prompt sistem meminta teks biasa.
+
 ```
 
 ## `build.gradle.kts`
@@ -473,8 +479,8 @@ android {
         applicationId = "com.alfread.alfvision"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -732,7 +738,7 @@ import kotlinx.coroutines.flow.first
 class AppContainer(context: Context) {
     val appContext = context.applicationContext
     val database: AppDatabase = Room.databaseBuilder(appContext, AppDatabase::class.java, "alf_vision.db")
-        .fallbackToDestructiveMigration()
+        .fallbackToDestructiveMigration(dropAllTables = true)
         .build()
     val secureStore = SecureStore(appContext)
     val settingsRepository = SettingsRepository(appContext, database.appSettingsDao())
@@ -967,7 +973,9 @@ data class ChatLine(
     val timestamp: Long = System.currentTimeMillis(),
     val imagePath: String? = null,
     val model: String? = null,
-    val tokenUsage: Int? = null
+    val tokenUsage: Int? = null,
+    /** Thumbnail kecil gambar layar yang dikirim bersama pesan (hanya di memori sesi). */
+    val imageBytes: ByteArray? = null
 )
 
 data class Region(
@@ -2244,6 +2252,8 @@ class FloatingPanelService : Service() {
         onMaximize = { toggleMaximize() },
         onClose = { stopSelf() },
         onCapture = { container.controller.capture() },
+        onAnswer = { panelTab.value = PanelTab.CHAT; container.controller.answerScreen() },
+        onClearImage = { container.sessionStore.clearImage() },
         onSelectRegion = { showRegionSelector() },
         onClearRegion = { container.sessionStore.setRegion(null) },
         onQuickAction = container.controller::quickAction,
@@ -2406,7 +2416,12 @@ class FloatingPanelService : Service() {
                         accent = settings.accent.color(),
                         busy = busy,
                         onTap = { restorePanel() },
-                        onDoubleTap = { container.controller.capture() },
+                        onDoubleTap = {
+                            // Double tap orb = jawab soal di layar (capture + jawab dalam satu aksi).
+                            restorePanel()
+                            panelTab.value = PanelTab.CHAT
+                            container.controller.answerScreen()
+                        },
                         onLongPress = { showRegionSelector() },
                         onDrag = { dx, dy -> moveOrb(dx, dy) },
                         onDragEnd = { snapOrb() }
@@ -2607,6 +2622,7 @@ class FloatingPanelService : Service() {
 ```kt
 package com.alfread.alfvision.service
 
+import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
@@ -2629,6 +2645,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -2641,6 +2659,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -2655,6 +2675,7 @@ import androidx.compose.ui.unit.sp
 import com.alfread.alfvision.core.model.*
 import com.alfread.alfvision.ui.components.DockBar
 import com.alfread.alfvision.ui.components.DockItem
+import com.alfread.alfvision.ui.components.MessageContent
 import com.alfread.alfvision.ui.components.SliderRow
 import com.alfread.alfvision.ui.components.SwitchRow
 import com.alfread.alfvision.ui.theme.AlfCyan
@@ -2676,6 +2697,8 @@ class PanelActions(
     val onMaximize: () -> Unit,
     val onClose: () -> Unit,
     val onCapture: () -> Unit,
+    val onAnswer: () -> Unit,
+    val onClearImage: () -> Unit,
     val onSelectRegion: () -> Unit,
     val onClearRegion: () -> Unit,
     val onQuickAction: (String) -> Unit,
@@ -2859,7 +2882,7 @@ fun FloatingOrb(
 // ---------------------------------------------------------------------------------------------
 
 private val panelDock = listOf(
-    DockItem(PanelTab.CHAT.name, "Chat", Icons.Default.Chat),
+    DockItem(PanelTab.CHAT.name, "Chat", Icons.AutoMirrored.Filled.Chat),
     DockItem(PanelTab.TOOLS.name, "Tools", Icons.Default.Dashboard),
     DockItem(PanelTab.SETUP.name, "Setup", Icons.Default.Tune),
     DockItem(ROUTE_APP, "App", Icons.Default.Home)
@@ -2882,6 +2905,9 @@ fun FloatingPanel(
     val accent = settings.accent.color()
     val shape = RoundedCornerShape(26.dp)
     val opacity = settings.floating.opacity
+    // FIX: overlay tidak punya Surface di root, sehingga LocalContentColor default hitam
+    // (teks gelap di atas latar gelap). Sekarang warna konten diset eksplisit.
+    CompositionLocalProvider(LocalContentColor provides scheme.onSurface) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2932,6 +2958,7 @@ fun FloatingPanel(
                 drawLine(handleColor, Offset(size.width, size.height * 0.5f), Offset(size.width * 0.5f, size.height), 3f)
             }
         }
+    }
     }
 }
 
@@ -2991,17 +3018,33 @@ private fun ChatPane(
     }
     Column(Modifier.fillMaxSize()) {
         if (currentImage != null) {
+            val thumb = remember(currentImage.bytes) {
+                val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                BitmapFactory.decodeByteArray(currentImage.bytes, 0, currentImage.bytes.size, options)?.asImageBitmap()
+            }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(accent.copy(alpha = 0.12f))
-                    .padding(start = 10.dp, end = 4.dp),
+                    .background(accent.copy(alpha = 0.16f))
+                    .padding(start = 6.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.CropFree, null, tint = accent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Image: ${currentImage.label}", Modifier.weight(1f), fontSize = 12.sp)
-                TextButton(onClick = actions.onPin) { Text("PIN", fontSize = 12.sp) }
+                if (thumb != null) {
+                    androidx.compose.foundation.Image(
+                        thumb, contentDescription = "Gambar terlampir",
+                        modifier = Modifier.size(width = 44.dp, height = 44.dp).clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Gambar layar terlampir", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    Text(currentImage.label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = actions.onPin) { Text("PIN", fontSize = 11.sp) }
+                IconButton(onClick = actions.onClearImage, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, "Lepas gambar", modifier = Modifier.size(16.dp))
+                }
             }
         }
         LazyColumn(
@@ -3037,6 +3080,13 @@ private fun ChatPane(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                AssistChip(
+                    onClick = actions.onAnswer,
+                    label = { Text("Jawab Soal", fontSize = 11.sp, color = Color.White) },
+                    leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(14.dp)) },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = accent),
+                    border = null
+                )
                 listOf("Analyze", "Explain", "Read", "Translate", "Find Error", "Help Me").forEach { action ->
                     AssistChip(onClick = { actions.onQuickAction(action) }, label = { Text(action, fontSize = 11.sp) })
                 }
@@ -3072,8 +3122,13 @@ private fun ChatPane(
                     }
                 },
                 trailingIcon = {
-                    IconButton(onClick = if (busy) actions.onStop else actions.onSend, enabled = busy || input.isNotBlank()) {
-                        Icon(if (busy) Icons.Default.Stop else Icons.Default.Send, if (busy) "Stop" else "Send", tint = accent)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = actions.onCapture, enabled = !busy) {
+                            Icon(Icons.Default.CameraAlt, "Lampirkan gambar layar", tint = accent)
+                        }
+                        IconButton(onClick = if (busy) actions.onStop else actions.onSend, enabled = busy || input.isNotBlank()) {
+                            Icon(if (busy) Icons.Default.Stop else Icons.AutoMirrored.Filled.Send, if (busy) "Stop" else "Send", tint = accent)
+                        }
                     }
                 }
             )
@@ -3084,10 +3139,22 @@ private fun ChatPane(
 @Composable
 private fun MessageBubble(line: ChatLine, accent: Color) {
     val isUser = line.role == Role.USER
-    val bg = if (isUser) accent.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+    val scheme = MaterialTheme.colorScheme
+    // FIX: latar bubble solid + warna teks eksplisit supaya jawaban jelas terbaca.
+    val bg = if (isUser) accent.copy(alpha = 0.32f) else scheme.surfaceContainerHighest
+    val shape = RoundedCornerShape(
+        topStart = 16.dp, topEnd = 16.dp,
+        bottomStart = if (isUser) 16.dp else 4.dp, bottomEnd = if (isUser) 4.dp else 16.dp
+    )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-        Surface(color = bg, shape = RoundedCornerShape(16.dp), modifier = Modifier.widthIn(max = 320.dp)) {
-            Text(line.content, Modifier.padding(horizontal = 12.dp, vertical = 9.dp), fontSize = 13.sp)
+        Box(
+            Modifier
+                .widthIn(max = 340.dp)
+                .clip(shape)
+                .background(bg)
+                .padding(horizontal = 12.dp, vertical = 9.dp)
+        ) {
+            MessageContent(line, scheme.onSurface, scheme.surface.copy(alpha = 0.6f), textSize = 14)
         }
     }
 }
@@ -3114,6 +3181,21 @@ private fun ToolsPane(accent: Color, hasImage: Boolean, actions: PanelActions, g
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        Surface(
+            onClick = { actions.onAnswer(); goChat() },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = accent
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, null, tint = Color.White)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("JAWAB SOAL DI LAYAR", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    Text("Capture layar lalu jawab semua soal yang terlihat", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
+                }
+            }
+        }
         Text("TOOLS", style = MaterialTheme.typography.labelMedium, color = accent, letterSpacing = 1.2.sp)
         tools.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3306,6 +3388,7 @@ fun RegionSelectorOverlay(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                 )
             }
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
             Row(
                 Modifier.clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)).padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -3316,6 +3399,7 @@ fun RegionSelectorOverlay(
                 IconButton(onClick = onSave) { Icon(Icons.Default.Save, "Save region preset") }
                 IconButton(onClick = onApply) { Icon(Icons.Default.Check, "Use region", tint = accent) }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close region selector") }
+            }
             }
         }
     }
@@ -3819,6 +3903,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun answerScreen() {
+        c.controller.answerScreen()
+    }
+
+    fun clearImage() {
+        c.sessionStore.clearImage()
+    }
+
     fun stopVoice() {
         c.voiceInputManager.stop()
     }
@@ -4304,6 +4396,144 @@ fun BrandDot(modifier: Modifier = Modifier, size: Int = 36) {
 
 ```
 
+## `app/src/main/java/com/alfread/alfvision/ui/components/Markdown.kt`
+
+```kt
+package com.alfread.alfvision.ui.components
+
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import com.alfread.alfvision.core.model.ChatLine
+
+private val bulletRegex = Regex("^(\\s*)[*\\-+]\\s+(.*)$")
+private val headingRegex = Regex("^#{1,6}\\s+(.*)$")
+private val ruleRegex = Regex("^\\s*([-*_]\\s*){3,}$")
+
+/** Mengubah markdown sederhana (**bold**, *italic*, `code`, bullet, heading) jadi teks berformat, tanpa simbol mentah. */
+fun renderMarkdown(source: String, codeBackground: Color): AnnotatedString = buildAnnotatedString {
+    var started = false
+    var inFence = false
+    for (raw in source.replace("\r\n", "\n").split("\n")) {
+        val trimmed = raw.trimStart()
+        if (trimmed.startsWith("```")) {
+            inFence = !inFence
+            continue
+        }
+        if (!inFence && ruleRegex.matches(raw)) continue
+        if (started) append("\n")
+        started = true
+        if (inFence) {
+            withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(raw) }
+            continue
+        }
+        val heading = headingRegex.matchEntire(trimmed)
+        val bullet = bulletRegex.matchEntire(raw)
+        when {
+            heading != null -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 1.08.em)) {
+                appendInline(heading.groupValues[1], codeBackground)
+            }
+            bullet != null -> {
+                val indent = " ".repeat((bullet.groupValues[1].length / 2) * 2)
+                append(indent + "• ")
+                appendInline(bullet.groupValues[2], codeBackground)
+            }
+            else -> appendInline(raw, codeBackground)
+        }
+    }
+}
+
+private fun AnnotatedString.Builder.appendInline(text: String, codeBackground: Color) {
+    val plain = StringBuilder()
+    fun flush() {
+        if (plain.isNotEmpty()) {
+            append(plain.toString())
+            plain.clear()
+        }
+    }
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (text.startsWith("**", i)) {
+            val end = text.indexOf("**", i + 2)
+            if (end > i + 2) {
+                flush()
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendInline(text.substring(i + 2, end), codeBackground) }
+                i = end + 2
+            } else {
+                i += 2
+            }
+        } else if (c == '`') {
+            val end = text.indexOf('`', i + 1)
+            if (end > i + 1) {
+                flush()
+                withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(text.substring(i + 1, end)) }
+                i = end + 1
+            } else {
+                i += 1
+            }
+        } else if (c == '*' && i + 1 < text.length && !text[i + 1].isWhitespace()) {
+            val end = text.indexOf('*', i + 1)
+            if (end > i + 1 && !text[end - 1].isWhitespace()) {
+                flush()
+                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendInline(text.substring(i + 1, end), codeBackground) }
+                i = end + 1
+            } else {
+                i += 1
+            }
+        } else {
+            plain.append(c)
+            i += 1
+        }
+    }
+    flush()
+}
+
+/** Isi bubble chat: thumbnail gambar layar (jika ada) + teks yang sudah dirender dari markdown. */
+@Composable
+fun MessageContent(line: ChatLine, textColor: Color, codeBackground: Color, textSize: Int = 14) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val thumb = line.imageBytes
+        if (thumb != null) {
+            val bitmap = remember(thumb) { BitmapFactory.decodeByteArray(thumb, 0, thumb.size)?.asImageBitmap() }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = "Gambar layar terlampir",
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
+        val rendered = remember(line.content, codeBackground) { renderMarkdown(line.content, codeBackground) }
+        Text(rendered, color = textColor, fontSize = textSize.sp, lineHeight = (textSize + 6).sp)
+    }
+}
+
+```
+
 ## `app/src/main/java/com/alfread/alfvision/ui/navigation/Navigation.kt`
 
 ```kt
@@ -4322,6 +4552,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -4345,7 +4576,7 @@ import com.alfread.alfvision.ui.screens.*
 sealed class Dest(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     data object Home : Dest("home", "Home", Icons.Default.Home)
     data object Vision : Dest("vision", "Vision", Icons.Default.Visibility)
-    data object Chat : Dest("chat", "Chat", Icons.Default.Chat)
+    data object Chat : Dest("chat", "Chat", Icons.AutoMirrored.Filled.Chat)
     data object History : Dest("history", "History", Icons.Default.History)
     data object Settings : Dest("settings", "Settings", Icons.Default.Settings)
 }
@@ -4430,6 +4661,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -4482,8 +4716,8 @@ fun AnnotationEditor(
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
             Text("Annotate", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            IconButton(onClick = { if (marks.isNotEmpty()) { redo = redo + marks.last(); marks = marks.dropLast(1) } }) { Icon(Icons.Default.Undo, "Undo") }
-            IconButton(onClick = { if (redo.isNotEmpty()) { marks = marks + redo.last(); redo = redo.dropLast(1) } }) { Icon(Icons.Default.Redo, "Redo") }
+            IconButton(onClick = { if (marks.isNotEmpty()) { redo = redo + marks.last(); marks = marks.dropLast(1) } }) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
+            IconButton(onClick = { if (redo.isNotEmpty()) { marks = marks + redo.last(); redo = redo.dropLast(1) } }) { Icon(Icons.AutoMirrored.Filled.Redo, "Redo") }
             Button(onClick = {
                 // FIX: koordinat mark (ruang canvas) dikonversi ke ruang bitmap asli.
                 val scaleX = if (canvasSize.width > 0) bitmap.width.toFloat() / canvasSize.width else 1f
@@ -4497,7 +4731,7 @@ fun AnnotationEditor(
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ToolChip("Rect", Tool.RECTANGLE, tool, Icons.Default.CropSquare) { tool = it }
             ToolChip("Circle", Tool.CIRCLE, tool, Icons.Default.Circle) { tool = it }
-            ToolChip("Arrow", Tool.ARROW, tool, Icons.Default.ArrowForward) { tool = it }
+            ToolChip("Arrow", Tool.ARROW, tool, Icons.AutoMirrored.Filled.ArrowForward) { tool = it }
             ToolChip("Line", Tool.LINE, tool, Icons.Default.Minimize) { tool = it }
             ToolChip("Text", Tool.TEXT, tool, Icons.Default.TextFields) { tool = it }
             ToolChip("Blur", Tool.BLUR, tool, Icons.Default.BlurOn) { tool = it }
@@ -4638,6 +4872,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -4763,15 +4999,15 @@ fun HomeScreen(
 
         SectionLabel("Quick actions")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionTile(Icons.Default.Chat, "Chat", Modifier.weight(1f)) { onNavigate(Dest.Chat.route) }
+            ActionTile(Icons.AutoMirrored.Filled.Chat, "Chat", Modifier.weight(1f)) { onNavigate(Dest.Chat.route) }
             ActionTile(Icons.Default.CameraAlt, "Capture", Modifier.weight(1f)) { vm.capture() }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionTile(Icons.Default.Crop, "Region", Modifier.weight(1f)) {
                 if (overlayReady) vm.showRegionSelector() else onOverlay()
             }
-            ActionTile(Icons.Default.AutoAwesome, "Analyze", Modifier.weight(1f)) {
-                vm.quickAction("Analyze")
+            ActionTile(Icons.Default.AutoAwesome, "Jawab Soal", Modifier.weight(1f)) {
+                vm.answerScreen()
                 onNavigate(Dest.Chat.route)
             }
         }
@@ -4938,6 +5174,13 @@ fun ChatScreen(vm: MainViewModel, padding: PaddingValues, onRequestMicrophone: (
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            AssistChip(
+                onClick = { vm.answerScreen() },
+                label = { Text("Jawab Soal", color = Color.White) },
+                leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(16.dp)) },
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primary),
+                border = null
+            )
             listOf("Analyze", "Explain", "Read", "Translate", "Summarize", "Find Error", "Extract Text", "Describe", "Help Me").forEach { action ->
                 AssistChip(onClick = { vm.quickAction(action) }, label = { Text(action) })
             }
@@ -4954,6 +5197,28 @@ fun ChatScreen(vm: MainViewModel, padding: PaddingValues, onRequestMicrophone: (
             items(lines, key = { it.id }) { line -> MessageBubble(line) }
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+        image?.let { attached ->
+            val thumb = remember(attached.bytes) {
+                val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                BitmapFactory.decodeByteArray(attached.bytes, 0, attached.bytes.size, options)?.asImageBitmap()
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)).padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                thumb?.let {
+                    androidx.compose.foundation.Image(
+                        it, "Gambar terlampir",
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("Gambar layar terlampir (${attached.label})", Modifier.weight(1f), fontSize = 13.sp)
+                IconButton(onClick = { vm.clearImage() }) { Icon(Icons.Default.Close, "Lepas gambar") }
+            }
+        }
         error?.let {
             InfoBanner(it, Modifier.padding(vertical = 4.dp), actionLabel = "Retry", onAction = { vm.retryLast() }, onDismiss = { vm.session.setError(null) })
         }
@@ -4984,7 +5249,7 @@ fun ChatScreen(vm: MainViewModel, padding: PaddingValues, onRequestMicrophone: (
                     onClick = { if (busy) vm.stopRequest() else vm.ask(input) },
                     enabled = busy || input.isNotBlank()
                 ) {
-                    Icon(if (busy) Icons.Default.Stop else Icons.Default.Send, if (busy) "Stop" else "Send", tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (busy) Icons.Default.Stop else Icons.AutoMirrored.Filled.Send, if (busy) "Stop" else "Send", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -5005,7 +5270,7 @@ private fun MessageBubble(line: ChatLine) {
             modifier = Modifier.widthIn(max = 340.dp)
         ) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                SelectionContainer { Text(line.content, fontSize = 14.sp) }
+                SelectionContainer { MessageContent(line, textColor, MaterialTheme.colorScheme.surface.copy(alpha = 0.5f), textSize = 15) }
                 if (!isUser) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val meta = listOfNotNull(line.model, line.tokenUsage?.takeIf { it > 0 }?.let { "$it tok" }).joinToString(" - ")
@@ -5171,7 +5436,7 @@ fun SettingsScreen(vm: MainViewModel, padding: PaddingValues, onOverlay: () -> U
                     OutlinedTextField(
                         value = settings.activeModel, onValueChange = {}, readOnly = true, label = { Text("Model") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(modelExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                     )
                     ExposedDropdownMenu(expanded = modelExpanded, onDismissRequest = { modelExpanded = false }) {
                         if (visionModels.isEmpty()) {
@@ -5200,7 +5465,7 @@ fun SettingsScreen(vm: MainViewModel, padding: PaddingValues, onOverlay: () -> U
                     OutlinedTextField(
                         value = selected, onValueChange = {}, readOnly = true, label = { Text("Active profile") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(profileExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                     )
                     ExposedDropdownMenu(expanded = profileExpanded, onDismissRequest = { profileExpanded = false }) {
                         profiles.forEach { p ->
@@ -5412,7 +5677,7 @@ private fun <T : Enum<T>> EnumDropdown(label: String, selected: String, entries:
         OutlinedTextField(
             selected, {}, readOnly = true, label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
         )
         ExposedDropdownMenu(expanded, { expanded = false }) {
             entries.forEach { e ->
@@ -5720,7 +5985,7 @@ class SessionStore {
     val voiceState: StateFlow<VoiceState> = _voiceState
 
     fun setInput(value: String) { _input.value = value }
-    fun addUser(text: String, imagePath: String? = null) { _lines.value = _lines.value + ChatLine(System.nanoTime(), Role.USER, text, imagePath = imagePath) }
+    fun addUser(text: String, imagePath: String? = null, imageBytes: ByteArray? = null) { _lines.value = _lines.value + ChatLine(System.nanoTime(), Role.USER, text, imagePath = imagePath, imageBytes = imageBytes) }
     fun addAssistant(text: String, model: String, usage: ModelUsage, imagePath: String? = null) { _lines.value = _lines.value + ChatLine(System.nanoTime(), Role.ASSISTANT, text, model = model, tokenUsage = usage.totalTokens, imagePath = imagePath) }
     fun clearChat() { _lines.value = emptyList() }
     fun removeLastAssistant() { if (_lines.value.lastOrNull()?.role == Role.ASSISTANT) _lines.value = _lines.value.dropLast(1) }
@@ -5730,6 +5995,7 @@ class SessionStore {
     fun setError(value: String?) { _error.value = value }
     fun setVoiceState(value: VoiceState) { _voiceState.value = value }
     fun setImage(value: PendingImage) { _previousImage.value = _currentImage.value; _currentImage.value = value }
+    fun clearImage() { _currentImage.value = null }
     fun pinCurrent() { _pinnedImage.value = _currentImage.value }
     fun unpin() { _pinnedImage.value = null }
 }
@@ -5743,6 +6009,8 @@ enum class VoiceState { IDLE, LISTENING, ERROR }
 ```kt
 package com.alfread.alfvision.vision
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Base64
 import com.alfread.alfvision.core.model.*
 import com.alfread.alfvision.data.network.GroqApiException
@@ -5842,7 +6110,7 @@ class VisionAssistantController(
                 val current = (session.currentImage.value ?: session.pinnedImage.value)?.bytes
                 val previous = if (compare) session.previousImage.value?.bytes else null
                 val imagePath = if (currentSettings.vision.saveScreenshots && current != null) imageStorage.save(current, "history") else null
-                session.addUser(cleaned, imagePath)
+                session.addUser(cleaned, imagePath, current?.let { makeThumbnail(it) })
                 if (session.input.value.trim() == cleaned) session.setInput("")
                 if (currentSettings.saveHistory) ensureConversation(profile?.id ?: 0, cleaned)
                 val recent = session.lines.value.takeLast(30)
@@ -5888,6 +6156,11 @@ class VisionAssistantController(
         "Find Error" -> "Find possible errors or abnormal behavior visible in this screen area. Explain evidence and fixes."
         "Extract Text" -> "Extract visible text exactly as readable. Return text only, with sensible line breaks."
         "Describe" -> "Describe the visible screen area precisely and briefly."
+        "Jawab Soal" -> "Lihat layar ini. Temukan SEMUA soal atau pertanyaan yang terlihat (pilihan ganda, benar/salah, isian, hitungan, esai singkat). " +
+            "Untuk setiap soal tulis: nomor soal, lalu JAWABAN AKHIR lebih dulu (untuk pilihan ganda tulis huruf dan isinya), " +
+            "kemudian alasan singkat 1-2 kalimat atau langkah hitungan ringkas. " +
+            "Jika soal terpotong atau tidak terbaca jelas, katakan bagian mana yang kurang. " +
+            "Jawab dalam bahasa yang sama dengan soalnya. Tulis teks biasa tanpa simbol markdown."
         "Help Me" -> "Based on this screen area, tell me what I should do next. Give practical steps and do not invent hidden information."
         else -> action
     }
@@ -5895,6 +6168,27 @@ class VisionAssistantController(
     fun quickAction(action: String) {
         ask(promptFor(action))
     }
+
+    /** Satu tombol: ambil layar lalu langsung jawab soal yang terlihat. */
+    fun answerScreen() {
+        scope.launch {
+            val region = session.region.value
+            if (captureNow(region, region == null)) ask(promptFor("Jawab Soal"))?.join()
+        }
+    }
+
+    private fun makeThumbnail(bytes: ByteArray): ByteArray? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (bounds.outWidth / sample > 720) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return@runCatching null
+        val out = java.io.ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
+        bitmap.recycle()
+        out.toByteArray()
+    }.getOrNull()
 
     fun compare() {
         val current = session.currentImage.value
@@ -5949,7 +6243,8 @@ class VisionAssistantController(
             ResponseStyle.TECHNICAL -> "Use precise technical terminology and implementation-level detail when relevant."
             ResponseStyle.STEP_BY_STEP -> "Answer using numbered step-by-step instructions when actions are needed."
         }
-        return listOf(profile?.systemPrompt ?: "You are ALF Vision, a helpful screen assistant.", styleText).joinToString(" ")
+        val plain = "Write in plain text. Do not use markdown symbols such as asterisks, pound signs or backticks; use simple numbered lines or dashes instead."
+        return listOf(profile?.systemPrompt ?: "You are ALF Vision, a helpful screen assistant.", styleText, plain).joinToString(" ")
     }
 
     private fun errorMessage(t: Throwable): String = when (t) {
@@ -6242,6 +6537,36 @@ class ImageProcessorTest {
         val result = Region(950, 950, 200, 200, 1000, 1000).normalized(1000, 1000)
         assertEquals(50, result.width)
         assertEquals(50, result.height)
+    }
+}
+
+```
+
+## `app/src/test/java/com/alfread/alfvision/MarkdownTest.kt`
+
+```kt
+package com.alfread.alfvision
+
+import androidx.compose.ui.graphics.Color
+import com.alfread.alfvision.ui.components.renderMarkdown
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Test
+
+class MarkdownTest {
+    @Test fun boldMarkersAreRemoved() {
+        val out = renderMarkdown("**Jawaban:** B", Color.Gray)
+        assertEquals("Jawaban: B", out.text)
+    }
+
+    @Test fun bulletsBecomeDots() {
+        val out = renderMarkdown("*   **Adjust Settings:** tap toggles\n* Second", Color.Gray)
+        assertEquals("• Adjust Settings: tap toggles\n• Second", out.text)
+    }
+
+    @Test fun headingsAndFencesHaveNoSymbols() {
+        val out = renderMarkdown("## Judul\n```\nx = 1\n```\n`kode` biasa", Color.Gray)
+        assertFalse(out.text.contains("#") || out.text.contains("`"))
     }
 }
 

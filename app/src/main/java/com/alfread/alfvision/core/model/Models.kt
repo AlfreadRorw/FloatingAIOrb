@@ -11,7 +11,9 @@ data class ChatLine(
     val timestamp: Long = System.currentTimeMillis(),
     val imagePath: String? = null,
     val model: String? = null,
-    val tokenUsage: Int? = null
+    val tokenUsage: Int? = null,
+    /** Thumbnail kecil gambar layar yang dikirim bersama pesan (hanya di memori sesi). */
+    val imageBytes: ByteArray? = null
 )
 
 data class Region(

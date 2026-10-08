@@ -95,7 +95,7 @@ fun SettingsScreen(vm: MainViewModel, padding: PaddingValues, onOverlay: () -> U
                     OutlinedTextField(
                         value = settings.activeModel, onValueChange = {}, readOnly = true, label = { Text("Model") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(modelExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                     )
                     ExposedDropdownMenu(expanded = modelExpanded, onDismissRequest = { modelExpanded = false }) {
                         if (visionModels.isEmpty()) {
@@ -124,7 +124,7 @@ fun SettingsScreen(vm: MainViewModel, padding: PaddingValues, onOverlay: () -> U
                     OutlinedTextField(
                         value = selected, onValueChange = {}, readOnly = true, label = { Text("Active profile") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(profileExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                     )
                     ExposedDropdownMenu(expanded = profileExpanded, onDismissRequest = { profileExpanded = false }) {
                         profiles.forEach { p ->
@@ -336,7 +336,7 @@ private fun <T : Enum<T>> EnumDropdown(label: String, selected: String, entries:
         OutlinedTextField(
             selected, {}, readOnly = true, label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
         )
         ExposedDropdownMenu(expanded, { expanded = false }) {
             entries.forEach { e ->

@@ -1,5 +1,6 @@
 package com.alfread.alfvision.service
 
+import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
@@ -22,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +37,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -48,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.alfread.alfvision.core.model.*
 import com.alfread.alfvision.ui.components.DockBar
 import com.alfread.alfvision.ui.components.DockItem
+import com.alfread.alfvision.ui.components.MessageContent
 import com.alfread.alfvision.ui.components.SliderRow
 import com.alfread.alfvision.ui.components.SwitchRow
 import com.alfread.alfvision.ui.theme.AlfCyan
@@ -69,6 +75,8 @@ class PanelActions(
     val onMaximize: () -> Unit,
     val onClose: () -> Unit,
     val onCapture: () -> Unit,
+    val onAnswer: () -> Unit,
+    val onClearImage: () -> Unit,
     val onSelectRegion: () -> Unit,
     val onClearRegion: () -> Unit,
     val onQuickAction: (String) -> Unit,
@@ -252,7 +260,7 @@ fun FloatingOrb(
 // ---------------------------------------------------------------------------------------------
 
 private val panelDock = listOf(
-    DockItem(PanelTab.CHAT.name, "Chat", Icons.Default.Chat),
+    DockItem(PanelTab.CHAT.name, "Chat", Icons.AutoMirrored.Filled.Chat),
     DockItem(PanelTab.TOOLS.name, "Tools", Icons.Default.Dashboard),
     DockItem(PanelTab.SETUP.name, "Setup", Icons.Default.Tune),
     DockItem(ROUTE_APP, "App", Icons.Default.Home)
@@ -275,6 +283,9 @@ fun FloatingPanel(
     val accent = settings.accent.color()
     val shape = RoundedCornerShape(26.dp)
     val opacity = settings.floating.opacity
+    // FIX: overlay tidak punya Surface di root, sehingga LocalContentColor default hitam
+    // (teks gelap di atas latar gelap). Sekarang warna konten diset eksplisit.
+    CompositionLocalProvider(LocalContentColor provides scheme.onSurface) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -325,6 +336,7 @@ fun FloatingPanel(
                 drawLine(handleColor, Offset(size.width, size.height * 0.5f), Offset(size.width * 0.5f, size.height), 3f)
             }
         }
+    }
     }
 }
 
@@ -384,17 +396,33 @@ private fun ChatPane(
     }
     Column(Modifier.fillMaxSize()) {
         if (currentImage != null) {
+            val thumb = remember(currentImage.bytes) {
+                val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                BitmapFactory.decodeByteArray(currentImage.bytes, 0, currentImage.bytes.size, options)?.asImageBitmap()
+            }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(accent.copy(alpha = 0.12f))
-                    .padding(start = 10.dp, end = 4.dp),
+                    .background(accent.copy(alpha = 0.16f))
+                    .padding(start = 6.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.CropFree, null, tint = accent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Image: ${currentImage.label}", Modifier.weight(1f), fontSize = 12.sp)
-                TextButton(onClick = actions.onPin) { Text("PIN", fontSize = 12.sp) }
+                if (thumb != null) {
+                    androidx.compose.foundation.Image(
+                        thumb, contentDescription = "Gambar terlampir",
+                        modifier = Modifier.size(width = 44.dp, height = 44.dp).clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Gambar layar terlampir", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    Text(currentImage.label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = actions.onPin) { Text("PIN", fontSize = 11.sp) }
+                IconButton(onClick = actions.onClearImage, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, "Lepas gambar", modifier = Modifier.size(16.dp))
+                }
             }
         }
         LazyColumn(
@@ -430,6 +458,13 @@ private fun ChatPane(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                AssistChip(
+                    onClick = actions.onAnswer,
+                    label = { Text("Jawab Soal", fontSize = 11.sp, color = Color.White) },
+                    leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(14.dp)) },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = accent),
+                    border = null
+                )
                 listOf("Analyze", "Explain", "Read", "Translate", "Find Error", "Help Me").forEach { action ->
                     AssistChip(onClick = { actions.onQuickAction(action) }, label = { Text(action, fontSize = 11.sp) })
                 }
@@ -465,8 +500,13 @@ private fun ChatPane(
                     }
                 },
                 trailingIcon = {
-                    IconButton(onClick = if (busy) actions.onStop else actions.onSend, enabled = busy || input.isNotBlank()) {
-                        Icon(if (busy) Icons.Default.Stop else Icons.Default.Send, if (busy) "Stop" else "Send", tint = accent)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = actions.onCapture, enabled = !busy) {
+                            Icon(Icons.Default.CameraAlt, "Lampirkan gambar layar", tint = accent)
+                        }
+                        IconButton(onClick = if (busy) actions.onStop else actions.onSend, enabled = busy || input.isNotBlank()) {
+                            Icon(if (busy) Icons.Default.Stop else Icons.AutoMirrored.Filled.Send, if (busy) "Stop" else "Send", tint = accent)
+                        }
                     }
                 }
             )
@@ -477,10 +517,22 @@ private fun ChatPane(
 @Composable
 private fun MessageBubble(line: ChatLine, accent: Color) {
     val isUser = line.role == Role.USER
-    val bg = if (isUser) accent.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+    val scheme = MaterialTheme.colorScheme
+    // FIX: latar bubble solid + warna teks eksplisit supaya jawaban jelas terbaca.
+    val bg = if (isUser) accent.copy(alpha = 0.32f) else scheme.surfaceContainerHighest
+    val shape = RoundedCornerShape(
+        topStart = 16.dp, topEnd = 16.dp,
+        bottomStart = if (isUser) 16.dp else 4.dp, bottomEnd = if (isUser) 4.dp else 16.dp
+    )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-        Surface(color = bg, shape = RoundedCornerShape(16.dp), modifier = Modifier.widthIn(max = 320.dp)) {
-            Text(line.content, Modifier.padding(horizontal = 12.dp, vertical = 9.dp), fontSize = 13.sp)
+        Box(
+            Modifier
+                .widthIn(max = 340.dp)
+                .clip(shape)
+                .background(bg)
+                .padding(horizontal = 12.dp, vertical = 9.dp)
+        ) {
+            MessageContent(line, scheme.onSurface, scheme.surface.copy(alpha = 0.6f), textSize = 14)
         }
     }
 }
@@ -507,6 +559,21 @@ private fun ToolsPane(accent: Color, hasImage: Boolean, actions: PanelActions, g
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        Surface(
+            onClick = { actions.onAnswer(); goChat() },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = accent
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, null, tint = Color.White)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("JAWAB SOAL DI LAYAR", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    Text("Capture layar lalu jawab semua soal yang terlihat", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
+                }
+            }
+        }
         Text("TOOLS", style = MaterialTheme.typography.labelMedium, color = accent, letterSpacing = 1.2.sp)
         tools.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -699,6 +766,7 @@ fun RegionSelectorOverlay(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                 )
             }
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
             Row(
                 Modifier.clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)).padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -709,6 +777,7 @@ fun RegionSelectorOverlay(
                 IconButton(onClick = onSave) { Icon(Icons.Default.Save, "Save region preset") }
                 IconButton(onClick = onApply) { Icon(Icons.Default.Check, "Use region", tint = accent) }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close region selector") }
+            }
             }
         }
     }

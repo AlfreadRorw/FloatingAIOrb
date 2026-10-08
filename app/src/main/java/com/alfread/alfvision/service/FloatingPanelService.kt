@@ -162,6 +162,8 @@ class FloatingPanelService : Service() {
         onMaximize = { toggleMaximize() },
         onClose = { stopSelf() },
         onCapture = { container.controller.capture() },
+        onAnswer = { panelTab.value = PanelTab.CHAT; container.controller.answerScreen() },
+        onClearImage = { container.sessionStore.clearImage() },
         onSelectRegion = { showRegionSelector() },
         onClearRegion = { container.sessionStore.setRegion(null) },
         onQuickAction = container.controller::quickAction,
@@ -324,7 +326,12 @@ class FloatingPanelService : Service() {
                         accent = settings.accent.color(),
                         busy = busy,
                         onTap = { restorePanel() },
-                        onDoubleTap = { container.controller.capture() },
+                        onDoubleTap = {
+                            // Double tap orb = jawab soal di layar (capture + jawab dalam satu aksi).
+                            restorePanel()
+                            panelTab.value = PanelTab.CHAT
+                            container.controller.answerScreen()
+                        },
                         onLongPress = { showRegionSelector() },
                         onDrag = { dx, dy -> moveOrb(dx, dy) },
                         onDragEnd = { snapOrb() }
